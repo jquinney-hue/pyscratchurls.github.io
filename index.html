@@ -1,0 +1,2051 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PyScratch</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #1e1e1e; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #2d2d2d; }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #777; }
+
+        .code-editor {
+            font-family: 'Fira Code', 'Consolas', monospace;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            line-height: 1.5;
+            tab-size: 4;
+            outline: none;
+            resize: none;
+        }
+
+        .sprite-card.active {
+            border: 2px solid #3b82f6;
+            background-color: #333;
+        }
+
+        /* Canvas Background */
+        canvas {
+            background-image: radial-gradient(#2d2d2d 1px, transparent 1px);
+            background-size: 20px 20px;
+            background-color: #181818;
+            touch-action: none; /* Prevent scrolling on touch */
+        }
+        
+        /* Input Tweaks */
+        input[type="color"] {
+            -webkit-appearance: none;
+            border: none;
+            padding: 0;
+            overflow: hidden;
+        }
+        input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+        input[type="color"]::-webkit-color-swatch {
+            border: none;
+        }
+
+        /* Dial UI */
+        .direction-dial {
+            cursor: pointer;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+        }
+        .dial-hand {
+            transform-origin: bottom center;
+            pointer-events: none;
+        }
+        
+        .mode-btn.active {
+            background-color: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
+        }
+
+        /* Robust Fullscreen Overlay */
+        .fixed-fullscreen {
+            position: fixed !important;
+            top: 0;
+            left: 0;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 9999;
+            background-color: #000;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Fullscreen Controls */
+        .fullscreen-controls {
+            display: none; /* Hidden by default */
+        }
+        .fixed-fullscreen .fullscreen-controls {
+            display: flex; /* Visible in fullscreen */
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10000;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 5px 15px;
+            border-radius: 20px;
+            gap: 15px;
+            backdrop-filter: blur(4px);
+        }
+
+        /* Tooltip Styles */
+        #editor-tooltip {
+            position: absolute;
+            background-color: #252526;
+            border: 1px solid #454545;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-family: 'Fira Code', monospace;
+            font-size: 12px;
+            color: #d4d4d4;
+            z-index: 50;
+            pointer-events: none; /* Don't block clicks */
+            display: none;
+            white-space: nowrap;
+        }
+        .suggestion-match { color: #4fc1ff; font-weight: bold; }
+        .suggestion-param { color: #9cdcfe; }
+
+        /* Tabs */
+        .tab-btn.active {
+            background-color: #1e1e1e;
+            color: #3b82f6;
+            border-bottom: 2px solid #3b82f6;
+        }
+        .tab-btn {
+            background-color: #2d2d2d;
+            color: #9ca3af;
+            border-bottom: 2px solid transparent;
+        }
+
+        /* Thread List */
+        .thread-item {
+            border-left: 3px solid transparent;
+        }
+        .thread-item.active {
+            background-color: #252526;
+            border-left-color: #3b82f6;
+        }
+
+        /* Input Prompt */
+        #input-prompt {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(30, 30, 30, 0.95);
+            border: 2px solid #3b82f6;
+            padding: 10px;
+            border-radius: 8px;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            width: 80%;
+            max-width: 400px;
+            z-index: 100;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        #input-prompt.hidden { display: none; }
+        #input-question {
+            position: absolute;
+            top: -25px;
+            left: 0;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col">
+
+    <!-- Header / Toolbar -->
+    <header class="h-12 bg-gray-800 border-b border-gray-700 flex items-center px-4 justify-between shrink-0">
+        <div class="flex items-center gap-2">
+            <i class="fa-brands fa-python text-yellow-400 text-xl"></i>
+            <span class="font-bold text-lg tracking-wide">PyScratch</span>
+        </div>
+        
+        <div class="flex items-center gap-4">
+            <!-- File Operations -->
+            <div class="flex items-center gap-3 mr-4 border-r border-gray-600 pr-4">
+                <button onclick="saveProject()" class="text-gray-400 hover:text-white transition flex flex-col items-center" title="Save Project (.ps)">
+                    <i class="fa-solid fa-floppy-disk"></i>
+                </button>
+                <button onclick="document.getElementById('fileInput').click()" class="text-gray-400 hover:text-white transition flex flex-col items-center" title="Load Project">
+                    <i class="fa-solid fa-folder-open"></i>
+                </button>
+                <button onclick="publishGame()" class="text-blue-400 hover:text-blue-200 transition flex flex-col items-center" title="Publish as HTML">
+                    <i class="fa-solid fa-file-export"></i>
+                </button>
+            </div>
+
+            <!-- Execution Controls -->
+            <button onclick="runGame()" class="bg-green-600 hover:bg-green-500 text-white p-2 rounded-full w-10 h-10 flex items-center justify-center transition shadow-lg" title="Run (Green Flag)">
+                <i class="fa-solid fa-flag"></i>
+            </button>
+            <button onclick="stopGame()" class="bg-red-600 hover:bg-red-500 text-white p-2 rounded-full w-10 h-10 flex items-center justify-center transition shadow-lg" title="Stop">
+                <i class="fa-solid fa-stop"></i>
+            </button>
+            
+            <!-- Help Button -->
+            <button onclick="toggleHelpModal()" class="text-gray-400 hover:text-yellow-400 transition ml-2" title="Help / API Reference">
+                <i class="fa-solid fa-circle-question text-xl"></i>
+            </button>
+            
+            <!-- Color Picker Tool -->
+            <div class="relative ml-2">
+                <button onclick="activateColorPicker()" class="text-gray-400 hover:text-pink-400 transition flex items-center gap-1" title="Pick Color">
+                    <i class="fa-solid fa-eye-dropper text-xl"></i>
+                </button>
+                <input type="color" id="fallback-color-picker" class="absolute inset-0 opacity-0 cursor-pointer pointer-events-none" onchange="insertColor(this.value)">
+            </div>
+        </div>
+    </header>
+
+    <!-- Hidden File Input -->
+    <input type="file" id="fileInput" accept=".ps" style="display:none" onchange="loadProject(this)">
+
+    <!-- Main Workspace -->
+    <div class="flex-1 flex overflow-hidden relative">
+        
+        <!-- Left: Code & Costumes -->
+        <div class="w-1/2 flex flex-col border-r border-gray-700 relative bg-gray-900">
+            <!-- Tab Header -->
+            <div class="flex border-b border-gray-700 bg-gray-800 shrink-0">
+                <button id="tab-btn-code" onclick="switchTab('code')" class="tab-btn active flex-1 py-2 text-sm font-medium transition">Code</button>
+                <button id="tab-btn-costumes" onclick="switchTab('costumes')" class="tab-btn flex-1 py-2 text-sm font-medium transition">Costumes</button>
+            </div>
+
+            <!-- Tab Content: Code -->
+            <div id="tab-code" class="flex-1 flex flex-row relative h-full overflow-hidden">
+                <!-- Thread Sidebar -->
+                <div class="w-36 bg-gray-800 border-r border-gray-700 flex flex-col shrink-0">
+                    <div class="p-2 border-b border-gray-700 flex justify-between items-center bg-gray-800">
+                        <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Threads</span>
+                        <button onclick="addThread()" class="text-gray-400 hover:text-white transition" title="Add New Thread"><i class="fa-solid fa-plus"></i></button>
+                    </div>
+                    <div id="thread-list" class="flex-1 overflow-y-auto custom-scroll">
+                        <!-- Threads Injected Here -->
+                    </div>
+                </div>
+
+                <!-- Editor -->
+                <div class="flex-1 flex flex-col relative h-full bg-[#1e1e1e]">
+                    <div class="bg-gray-800 text-xs text-gray-400 px-4 py-1 border-b border-gray-700 flex justify-between shrink-0">
+                        <span><i class="fa-solid fa-code mr-2"></i><span id="editor-label">script.py</span></span>
+                        <span id="code-status">Ready</span>
+                    </div>
+                    <div class="flex-1 relative overflow-hidden">
+                        <textarea id="editor" class="code-editor w-full h-full p-4 text-sm border-none focus:ring-0" spellcheck="false" placeholder="# Select a sprite and create a thread to code..."></textarea>
+                        <!-- Tooltip -->
+                        <div id="editor-tooltip"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Content: Costumes -->
+            <div id="tab-costumes" class="flex-1 flex flex-col relative h-full hidden overflow-hidden bg-gray-900">
+                <div class="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-800 shrink-0">
+                    <h3 class="text-sm font-bold text-gray-300">Costume Library</h3>
+                    <button onclick="addCostume()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1 rounded flex items-center gap-2">
+                        <i class="fa-solid fa-plus"></i> Add
+                    </button>
+                </div>
+                <div class="flex-1 overflow-y-auto p-4 space-y-2" id="costume-list">
+                    <!-- Costumes Injected Here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Stage & Sprites -->
+        <div class="w-1/2 flex flex-col">
+            
+            <!-- Top Right: Game View -->
+            <div id="game-container" class="h-3/5 bg-black relative flex items-center justify-center overflow-hidden group">
+                <!-- Resolution Text -->
+                <div class="absolute top-2 right-2 text-xs text-gray-500 pointer-events-none z-10 opacity-50 group-hover:opacity-100 transition">640x360</div>
+                
+                <!-- Fullscreen Toggle -->
+                <button onclick="toggleFullscreen()" class="absolute top-2 left-2 text-gray-400 hover:text-white z-20 p-2 rounded hover:bg-gray-800 transition bg-black bg-opacity-50" title="Toggle Fullscreen">
+                    <i id="fs-icon" class="fa-solid fa-expand"></i>
+                </button>
+
+                <!-- Fullscreen Only Controls -->
+                <div class="fullscreen-controls">
+                    <button onclick="runGame()" class="bg-green-600 hover:bg-green-500 text-white p-2 rounded-full w-10 h-10 flex items-center justify-center transition shadow-lg" title="Run">
+                        <i class="fa-solid fa-flag"></i>
+                    </button>
+                    <button onclick="stopGame()" class="bg-red-600 hover:bg-red-500 text-white p-2 rounded-full w-10 h-10 flex items-center justify-center transition shadow-lg" title="Stop">
+                        <i class="fa-solid fa-stop"></i>
+                    </button>
+                </div>
+
+                <canvas id="gameCanvas" width="640" height="360" class="max-w-full max-h-full shadow-lg" style="aspect-ratio: 16/9; cursor: crosshair;"></canvas>
+                
+                <!-- Ask/Input Prompt -->
+                <div id="input-prompt" class="hidden">
+                    <div id="input-question">Question?</div>
+                    <input type="text" id="user-input" class="flex-1 bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white text-sm focus:outline-none focus:border-blue-500" autocomplete="off">
+                    <button onclick="submitInput()" class="bg-blue-600 hover:bg-blue-500 text-white p-1.5 rounded transition">
+                        <i class="fa-solid fa-check"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Bottom Right: Sprite Properties & List -->
+            <div class="h-2/5 bg-gray-900 border-t border-gray-700 flex flex-col">
+                
+                <!-- Properties Bar -->
+                <div class="h-20 bg-gray-800 border-b border-gray-700 flex items-center px-4 gap-4 overflow-x-auto text-sm shrink-0 whitespace-nowrap scrollbar-thin">
+                    <!-- Name -->
+                    <div class="flex flex-col w-20 shrink-0">
+                        <label class="text-xs text-gray-500 mb-1">Name</label>
+                        <input type="text" id="prop-name" class="bg-gray-700 rounded px-2 py-1 border border-gray-600 text-white text-xs h-7" oninput="updateSpriteProp('name', this.value)">
+                    </div>
+                    
+                    <!-- Sprite Specific Props (Hidden for Stage) -->
+                    <div id="sprite-props" class="flex gap-4">
+                        <!-- Transform -->
+                        <div class="flex gap-2 shrink-0">
+                            <div class="flex flex-col w-12">
+                                <label class="text-xs text-gray-500 mb-1">X</label>
+                                <input type="number" id="prop-x" class="bg-gray-700 rounded px-1 py-1 border border-gray-600 text-white text-xs h-7" oninput="updateSpriteProp('x', parseFloat(this.value))">
+                            </div>
+                            <div class="flex flex-col w-12">
+                                <label class="text-xs text-gray-500 mb-1">Y</label>
+                                <input type="number" id="prop-y" class="bg-gray-700 rounded px-1 py-1 border border-gray-600 text-white text-xs h-7" oninput="updateSpriteProp('y', parseFloat(this.value))">
+                            </div>
+                            <div class="flex flex-col w-12">
+                                <label class="text-xs text-gray-500 mb-1">Size</label>
+                                <input type="number" id="prop-size" class="bg-gray-700 rounded px-1 py-1 border border-gray-600 text-white text-xs h-7" oninput="updateSpriteProp('size', parseFloat(this.value))">
+                            </div>
+                        </div>
+
+                        <!-- Direction Control -->
+                        <div class="flex items-center gap-3 border-l border-r border-gray-700 px-4 shrink-0">
+                            <!-- Angle Input & Dial -->
+                            <div class="flex flex-col items-center w-14">
+                                <label class="text-xs text-gray-500 mb-1">Dir</label>
+                                <div class="relative w-8 h-8 bg-gray-700 rounded-full border border-gray-600 direction-dial mb-1" id="direction-dial">
+                                    <div class="absolute inset-0 m-auto w-full h-full rounded-full border border-gray-600 opacity-50"></div>
+                                    <div class="dial-hand absolute top-1/2 left-1/2 w-0.5 h-[14px] bg-white -translate-x-1/2 -translate-y-full origin-bottom" id="dial-hand"></div>
+                                </div>
+                                <input type="number" id="prop-angle" class="bg-transparent text-center text-white text-xs w-full focus:outline-none" oninput="updateSpriteProp('angle', parseFloat(this.value))">
+                            </div>
+
+                            <!-- Rotation Style Buttons -->
+                            <div class="flex flex-col gap-1">
+                                <label class="text-xs text-gray-500">Mode</label>
+                                <div class="flex bg-gray-700 rounded border border-gray-600 p-0.5">
+                                    <button id="mode-all" onclick="updateRotationStyle('all-around')" class="mode-btn w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-white transition" title="All Around">
+                                        <i class="fa-solid fa-rotate"></i>
+                                    </button>
+                                    <button id="mode-lr" onclick="updateRotationStyle('left-right')" class="mode-btn w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-white transition" title="Left/Right">
+                                        <i class="fa-solid fa-left-right"></i>
+                                    </button>
+                                    <button id="mode-none" onclick="updateRotationStyle('no-rotation')" class="mode-btn w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-white transition" title="No Rotation">
+                                        <i class="fa-solid fa-ban"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Appearance (Common) -->
+                    <div class="flex gap-2 shrink-0">
+                         <div class="flex flex-col w-10">
+                            <label class="text-xs text-gray-500 mb-1">Color</label>
+                            <input type="color" id="prop-color" class="bg-gray-700 rounded border border-gray-600 w-full h-7 cursor-pointer" oninput="updateSpriteProp('color', this.value)">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sprite List -->
+                <div class="flex-1 p-2 overflow-y-auto">
+                    <div class="flex flex-wrap gap-2" id="sprite-list">
+                        <!-- Sprites generated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="help-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden backdrop-blur-sm">
+        <div class="bg-gray-800 p-6 rounded-lg shadow-2xl border border-gray-700 w-full max-w-2xl mx-4 flex flex-col max-h-[80vh]">
+            <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
+                <h3 class="text-xl font-bold text-gray-100"><i class="fa-solid fa-book mr-2 text-yellow-400"></i>API Reference</h3>
+                <button onclick="toggleHelpModal()" class="text-gray-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="overflow-y-auto pr-2 custom-scroll flex-1">
+                <table class="w-full text-left text-sm text-gray-300">
+                    <thead class="text-xs text-gray-500 uppercase bg-gray-700 sticky top-0">
+                        <tr>
+                            <th class="px-3 py-2 rounded-tl">Function</th>
+                            <th class="px-3 py-2">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody id="api-table-body" class="divide-y divide-gray-700">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Library Modal -->
+    <div id="library-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden backdrop-blur-sm">
+        <div class="bg-gray-800 p-6 rounded-lg shadow-2xl border border-gray-700 w-full max-w-4xl mx-4 flex flex-col h-[80vh]">
+            <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
+                <h3 class="text-xl font-bold text-gray-100">Select Costume</h3>
+                <button onclick="closeLibraryModal()" class="text-gray-400 hover:text-white transition"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="flex-1 overflow-y-auto custom-scroll p-2">
+                <div id="library-grid" class="grid grid-cols-4 md:grid-cols-6 gap-4">
+                    <!-- Images Loaded Here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="delete-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden backdrop-blur-sm">
+      <div class="bg-gray-800 p-6 rounded-lg shadow-2xl border border-gray-700 text-center max-w-sm w-full mx-4">
+        <h3 class="text-xl font-bold text-gray-100 mb-2">Delete <span id="delete-type">Sprite</span>?</h3>
+        <p class="text-gray-400 mb-6 text-sm">Are you sure you want to delete this? This action cannot be undone.</p>
+        <div class="flex justify-center gap-4">
+          <button onclick="confirmDelete()" class="bg-red-600 hover:bg-red-500 text-white px-5 py-2 rounded font-medium transition w-24">Delete</button>
+          <button onclick="closeDeleteModal()" class="bg-gray-700 hover:bg-gray-600 text-white px-5 py-2 rounded font-medium transition w-24 border border-gray-600">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rename Modal -->
+    <div id="rename-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 hidden backdrop-blur-sm">
+        <div class="bg-gray-800 p-6 rounded-lg shadow-2xl border border-gray-700 text-center max-w-sm w-full mx-4">
+            <h3 class="text-xl font-bold text-gray-100 mb-4">Rename Thread</h3>
+            <input type="text" id="rename-input" class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white mb-4 focus:border-blue-500 focus:outline-none" placeholder="New Name" onkeydown="if(event.key === 'Enter') confirmRename()">
+            <div class="flex justify-center gap-4">
+                <button onclick="confirmRename()" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded font-medium transition w-24">Save</button>
+                <button onclick="closeRenameModal()" class="bg-gray-700 hover:bg-gray-600 text-white px-5 py-2 rounded font-medium transition w-24 border border-gray-600">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+/* --- API Definition --- */
+const apiDocs = [
+    { name: "move_steps", params: "steps", desc: "Moves the sprite forward in its current direction." },
+    { name: "turn_right", params: "degrees", desc: "Rotates the sprite clockwise." },
+    { name: "turn_left", params: "degrees", desc: "Rotates the sprite counter-clockwise." },
+    { name: "point_towards", params: "degrees", desc: "Points the sprite in a specific direction (90 is Right)." },
+    { name: "go_to", params: "x, y", desc: "Teleports the sprite to a specific coordinate." },
+    { name: "set_x", params: "val", desc: "Sets the X position (0-640)." },
+    { name: "set_y", params: "val", desc: "Sets the Y position (0-360)." },
+    { name: "change_x", params: "val", desc: "Changes X position by a value." },
+    { name: "change_y", params: "val", desc: "Changes Y position by a value." },
+    { name: "next_costume", params: "", desc: "Switch to the next costume in the list." },
+    { name: "switch_costume", params: "index_or_name", desc: "Switch to costume by index (0, 1..) or name ('costume1')." },
+    { name: "set_position", params: "x, y", desc: "Sets both X and Y positions." },
+    { name: "if_on_edge_bounce", params: "", desc: "Bounces sprite if it hits the wall." },
+    { name: "set_color", params: "hex_or_r, [g, b]", desc: "Sets color using Hex string '#ff0000' or RGB values." },
+    { name: "say", params: "message, [secs]", desc: "Displays a speech bubble. Optionally waits for secs." },
+    { name: "think", params: "message, [secs]", desc: "Displays a thought bubble. Optionally waits for secs." },
+    { name: "ask", params: "question", desc: "Prompts user for input and returns the result." },
+    { name: "touching_sprite", params: "sprite_name", desc: "Returns True if touching the named sprite." },
+    { name: "touching_color", params: "hex_color", desc: "Returns True if sprite's center is touching the color." },
+    { name: "key_pressed", params: "key_name", desc: "Returns True if key is held ('a', 'space', 'up_arrow')." },
+    { name: "wait", params: "seconds", desc: "Pauses execution for the specified time." },
+    { name: "set_variable", params: "name, value", desc: "Sets a global variable." },
+    { name: "get_variable", params: "name", desc: "Gets a global variable's value." },
+    { name: "display_variable", params: "name, visible", desc: "Shows or hides a variable monitor on stage." },
+];
+
+/* --- Core State --- */
+let sprites = [];
+let backdrop = null;
+let activeSpriteId = null; 
+let activeTab = 'code'; 
+let gameRunning = false;
+let executionId = 0;
+let deleteTarget = null; // { type: 'sprite'|'thread', id: ... }
+let threadToRename = null;
+let globalVars = {}; 
+let watchedVars = {}; 
+let pendingInputResolve = null; // For ask()
+
+// Library State
+let libraryCache = { sprite: null, backdrop: null };
+let pendingCostumeIndex = -1;
+
+// Expose canvas globally to ensure access in generated code
+window.canvas = document.getElementById('gameCanvas');
+window.ctx = window.canvas.getContext('2d');
+const editor = document.getElementById('editor');
+const tooltip = document.getElementById('editor-tooltip');
+
+// Helper canvas for tinting
+const helperCanvas = document.createElement('canvas');
+const helperCtx = helperCanvas.getContext('2d');
+
+/* --- Tabs --- */
+function switchTab(tab) {
+    activeTab = tab;
+    document.getElementById('tab-btn-code').className = `tab-btn flex-1 py-2 text-sm font-medium transition ${tab === 'code' ? 'active' : ''}`;
+    document.getElementById('tab-btn-costumes').className = `tab-btn flex-1 py-2 text-sm font-medium transition ${tab === 'costumes' ? 'active' : ''}`;
+    
+    if (tab === 'code') {
+        document.getElementById('tab-code').classList.remove('hidden');
+        document.getElementById('tab-costumes').classList.add('hidden');
+    } else {
+        document.getElementById('tab-code').classList.add('hidden');
+        document.getElementById('tab-costumes').classList.remove('hidden');
+        renderCostumeList();
+    }
+}
+
+/* --- Costume Library Logic --- */
+async function openLibraryModal(index) {
+    pendingCostumeIndex = index;
+    const modal = document.getElementById('library-modal');
+    const container = document.getElementById('library-grid');
+    modal.classList.remove('hidden');
+
+    const isStage = activeSpriteId === 'backdrop';
+    const type = isStage ? 'backdrop' : 'sprite';
+
+    if (!libraryCache[type]) {
+        container.innerHTML = '<div class="text-gray-400 text-center col-span-full">Loading library...</div>';
+        try {
+            const url = isStage 
+                ? "https://raw.githubusercontent.com/jquinney-hue/pyscratchurls.github.io/refs/heads/main/backdropurls.txt"
+                : "https://raw.githubusercontent.com/jquinney-hue/pyscratchurls.github.io/refs/heads/main/costumeurls.txt";
+
+            const res = await fetch(url);
+            if (!res.ok) throw new Error("Network response was not ok");
+            const text = await res.text();
+            // Filter empty lines and append /get/ as requested
+            libraryCache[type] = text.split('\n')
+                .map(l => l.trim())
+                .filter(l => l.length > 0)
+                .map(url => url + "/get/");
+        } catch (e) {
+            console.error(e);
+            container.innerHTML = '<div class="text-red-400 text-center col-span-full">Failed to load library. Please check connection.</div>';
+            return;
+        }
+    }
+
+    renderLibraryGrid(type);
+}
+
+function renderLibraryGrid(type) {
+    const container = document.getElementById('library-grid');
+    container.innerHTML = '';
+    
+    const list = libraryCache[type];
+    if (!list) return;
+
+    list.forEach(url => {
+        const div = document.createElement('div');
+        div.className = "aspect-square bg-gray-700 rounded border border-gray-600 hover:border-blue-500 cursor-pointer p-2 flex items-center justify-center transition hover:bg-gray-600";
+        div.onclick = () => selectLibraryItem(url);
+        
+        const img = document.createElement('img');
+        img.src = url;
+        img.className = "max-w-full max-h-full object-contain pointer-events-none";
+        img.loading = "lazy"; // Standard caching behavior
+        
+        div.appendChild(img);
+        container.appendChild(div);
+    });
+}
+
+function selectLibraryItem(url) {
+    const s = getActiveSprite();
+    if (s && pendingCostumeIndex >= 0 && pendingCostumeIndex < s.costumes.length) {
+        const c = s.costumes[pendingCostumeIndex];
+        c.url = url;
+        c._imgObj.src = url;
+        // Trigger loading and refresh
+        c._imgObj.onload = () => { 
+            draw(); 
+            if (activeTab === 'costumes') renderCostumeList(); 
+            renderSpriteList(); 
+        };
+    }
+    closeLibraryModal();
+}
+
+function closeLibraryModal() {
+    document.getElementById('library-modal').classList.add('hidden');
+    pendingCostumeIndex = -1;
+}
+
+/* --- Thread Management --- */
+function getActiveSprite() {
+    return activeSpriteId === 'backdrop' ? backdrop : sprites.find(s => s.id === activeSpriteId);
+}
+
+function renderThreadList() {
+    const list = document.getElementById('thread-list');
+    list.innerHTML = '';
+    const s = getActiveSprite();
+    if (!s) return;
+
+    s.threads.forEach((t) => {
+        const item = document.createElement('div');
+        item.className = `thread-item p-2 cursor-pointer hover:bg-gray-700 transition flex justify-between items-center group ${t.id === s.activeThreadId ? 'active' : ''}`;
+        item.onclick = () => selectThread(t.id);
+        
+        // Right-click to rename using custom modal
+        item.oncontextmenu = (e) => {
+            e.preventDefault();
+            openRenameModal(t.id, t.name);
+        };
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = "text-xs text-gray-300 truncate flex-1 select-none"; 
+        nameSpan.innerText = t.name;
+        
+        const delBtn = document.createElement('button');
+        delBtn.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
+        delBtn.className = "text-gray-500 hover:text-red-400 text-xs opacity-0 group-hover:opacity-100 transition px-1";
+        delBtn.onclick = (e) => { e.stopPropagation(); deleteThread(t.id); };
+
+        item.appendChild(nameSpan);
+        item.appendChild(delBtn);
+        list.appendChild(item);
+    });
+}
+
+function openRenameModal(threadId, currentName) {
+    threadToRename = threadId;
+    const input = document.getElementById('rename-input');
+    input.value = currentName;
+    document.getElementById('rename-modal').classList.remove('hidden');
+    input.focus();
+}
+
+function confirmRename() {
+    if (!threadToRename) return;
+    const s = getActiveSprite();
+    if (s) {
+        const thread = s.threads.find(t => t.id === threadToRename);
+        if (thread) {
+            const input = document.getElementById('rename-input');
+            const newName = input.value.trim();
+            if (newName) {
+                thread.name = newName;
+                renderThreadList();
+            }
+        }
+    }
+    closeRenameModal();
+}
+
+function closeRenameModal() {
+    threadToRename = null;
+    document.getElementById('rename-modal').classList.add('hidden');
+}
+
+function addThread() {
+    const s = getActiveSprite();
+    if (!s) return;
+    const num = s.threads.length + 1;
+    const newThread = {
+        id: 't' + Date.now(),
+        name: `Script ${num}`,
+        code: `def game_start():\n    while True:\n        pass`
+    };
+    s.threads.push(newThread);
+    selectThread(newThread.id);
+}
+
+function selectThread(threadId) {
+    const s = getActiveSprite();
+    if (!s) return;
+    
+    s.activeThreadId = threadId;
+    const thread = s.threads.find(t => t.id === threadId);
+    if (thread) {
+        editor.value = thread.code;
+    }
+    renderThreadList();
+}
+
+function deleteThread(threadId) {
+    deleteTarget = { type: 'thread', id: threadId };
+    document.getElementById('delete-type').innerText = 'Thread';
+    document.getElementById('delete-modal').classList.remove('hidden');
+}
+
+/* --- Editor Input Handler --- */
+editor.addEventListener('input', (e) => {
+    const s = getActiveSprite();
+    if (s && s.activeThreadId) {
+        const thread = s.threads.find(t => t.id === s.activeThreadId);
+        if (thread) thread.code = editor.value;
+    }
+    updateTooltip();
+});
+
+/* --- Costume Management --- */
+function renderCostumeList() {
+    const list = document.getElementById('costume-list');
+    list.innerHTML = '';
+    const s = getActiveSprite();
+    if (!s) return;
+
+    s.costumes.forEach((c, index) => {
+        const item = document.createElement('div');
+        item.className = `flex flex-col bg-gray-800 rounded border border-gray-700 p-2 ${index === s.costumeIndex ? 'border-blue-500 bg-gray-700' : ''}`;
+        
+        const header = document.createElement('div');
+        header.className = "flex justify-between items-center mb-2";
+        
+        const badge = document.createElement('span');
+        badge.className = "text-[10px] bg-gray-900 text-gray-500 px-1 rounded";
+        badge.innerText = index + 1;
+        
+        const delBtn = document.createElement('button');
+        delBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+        delBtn.className = "text-gray-500 hover:text-red-400 px-1 text-xs";
+        delBtn.onclick = (e) => { e.stopPropagation(); deleteCostume(index); };
+        if (s.costumes.length <= 1) delBtn.disabled = true;
+
+        header.appendChild(badge);
+        header.appendChild(delBtn);
+        item.appendChild(header);
+
+        const content = document.createElement('div');
+        content.className = "flex gap-2 items-center cursor-pointer";
+        content.onclick = () => { s.costumeIndex = index; draw(); renderCostumeList(); };
+
+        const thumbBox = document.createElement('div');
+        thumbBox.className = "w-12 h-12 bg-gray-900 rounded overflow-hidden flex items-center justify-center shrink-0 border border-gray-600";
+        if (c._imgObj && c._imgObj.src) {
+            const img = document.createElement('img');
+            img.src = c._imgObj.src;
+            img.className = "max-w-full max-h-full object-contain";
+            thumbBox.appendChild(img);
+        }
+        content.appendChild(thumbBox);
+
+        const inputGroup = document.createElement('div');
+        inputGroup.className = "flex flex-col gap-1 flex-1 min-w-0";
+        
+        const nameInput = document.createElement('input');
+        nameInput.value = c.name;
+        nameInput.className = "bg-transparent text-xs text-white border-b border-transparent focus:border-blue-500 focus:outline-none w-full";
+        nameInput.placeholder = "Costume Name";
+        nameInput.onchange = (e) => { c.name = e.target.value; };
+        nameInput.onclick = (e) => e.stopPropagation();
+
+        const urlContainer = document.createElement('div');
+        urlContainer.className = "flex gap-1 items-center bg-gray-900 rounded px-1 py-0.5";
+
+        const urlInput = document.createElement('input');
+        urlInput.value = c.url;
+        urlInput.className = "bg-transparent text-[10px] text-gray-400 w-full focus:outline-none focus:text-white";
+        urlInput.placeholder = "Image URL";
+        urlInput.onclick = (e) => e.stopPropagation();
+        urlInput.onchange = (e) => { 
+            c.url = e.target.value; 
+            c._imgObj.src = c.url;
+            c._imgObj.onload = () => { draw(); renderCostumeList(); renderSpriteList(); };
+        };
+
+        const folderBtn = document.createElement('button');
+        folderBtn.className = "text-gray-400 hover:text-blue-400 px-1 text-xs";
+        folderBtn.innerHTML = '<i class="fa-solid fa-folder-open"></i>';
+        folderBtn.title = "Open Costume Library";
+        folderBtn.onclick = (e) => { e.stopPropagation(); openLibraryModal(index); };
+
+        urlContainer.appendChild(urlInput);
+        urlContainer.appendChild(folderBtn);
+
+        inputGroup.appendChild(nameInput);
+        inputGroup.appendChild(urlContainer);
+        content.appendChild(inputGroup);
+        item.appendChild(content);
+
+        list.appendChild(item);
+    });
+}
+
+function addCostume() {
+    const s = getActiveSprite();
+    if (!s) return;
+    const num = s.costumes.length + 1;
+    const newCostume = {
+        name: `costume${num}`,
+        url: "https://via.placeholder.com/100?text=New", 
+        _imgObj: new Image()
+    };
+    newCostume._imgObj.src = newCostume.url;
+    newCostume._imgObj.onload = () => { draw(); renderCostumeList(); };
+    
+    s.costumes.push(newCostume);
+    s.costumeIndex = s.costumes.length - 1; 
+    renderCostumeList();
+    draw();
+}
+
+function deleteCostume(index) {
+    const s = getActiveSprite();
+    if (!s || s.costumes.length <= 1) return;
+    
+    s.costumes.splice(index, 1);
+    if (s.costumeIndex >= index) s.costumeIndex = Math.max(0, s.costumeIndex - 1);
+    renderCostumeList();
+    draw();
+}
+
+/* --- Help & Tooltip Logic --- */
+function toggleHelpModal() {
+    const modal = document.getElementById('help-modal');
+    const tbody = document.getElementById('api-table-body');
+    if (modal.classList.contains('hidden')) {
+        tbody.innerHTML = apiDocs.map(doc => `
+            <tr class="bg-gray-800 hover:bg-gray-700 transition">
+                <td class="px-3 py-2 font-mono text-blue-300">${doc.name}(<span class="text-orange-300">${doc.params}</span>)</td>
+                <td class="px-3 py-2 text-gray-400">${doc.desc}</td>
+            </tr>
+        `).join('');
+        modal.classList.remove('hidden');
+    } else {
+        modal.classList.add('hidden');
+    }
+}
+
+function getCaretCoordinates() {
+    const x = editor.offsetLeft - editor.scrollLeft;
+    const y = editor.offsetTop - editor.scrollTop;
+    
+    const div = document.createElement('div');
+    const style = getComputedStyle(editor);
+    for (const prop of style) { div.style[prop] = style[prop]; }
+    div.style.visibility = 'hidden'; div.style.position = 'absolute';
+    div.style.whiteSpace = 'pre-wrap'; div.style.overflow = 'hidden';
+    div.textContent = editor.value.substring(0, editor.selectionStart);
+    
+    const span = document.createElement('span');
+    span.textContent = editor.value.substring(editor.selectionStart) || '.';
+    div.appendChild(span);
+    
+    document.body.appendChild(div);
+    const spanOffset = { top: span.offsetTop + parseInt(style.paddingTop), left: span.offsetLeft + parseInt(style.paddingLeft) };
+    document.body.removeChild(div);
+    
+    return { top: y + spanOffset.top, left: x + spanOffset.left };
+}
+
+editor.addEventListener('keyup', updateTooltip);
+editor.addEventListener('click', updateTooltip);
+editor.addEventListener('blur', () => setTimeout(() => tooltip.style.display = 'none', 200));
+
+function updateTooltip() {
+    const text = editor.value;
+    const cursor = editor.selectionStart;
+    let start = cursor - 1;
+    while (start >= 0 && /[\w]/.test(text[start])) start--;
+    const word = text.substring(start + 1, cursor);
+    let paramStart = cursor - 1;
+    while (paramStart >= 0 && text[paramStart] !== '(' && text[paramStart] !== '\n') paramStart--;
+    
+    let match = null; let mode = 'none';
+
+    if (paramStart >= 0 && text[paramStart] === '(') {
+        let funcEnd = paramStart - 1;
+        while (funcEnd >= 0 && /\s/.test(text[funcEnd])) funcEnd--; 
+        let funcStart = funcEnd;
+        while (funcStart >= 0 && /[\w]/.test(text[funcStart])) funcStart--;
+        const funcName = text.substring(funcStart + 1, funcEnd + 1);
+        match = apiDocs.find(d => d.name === funcName);
+        if (match) mode = 'params';
+    } 
+    if (mode === 'none' && word.length > 0) {
+        const matches = apiDocs.filter(d => d.name.startsWith(word));
+        if (matches.length > 0) { mode = 'suggest'; match = matches; }
+    }
+
+    if (mode !== 'none') {
+        const coords = getCaretCoordinates();
+        tooltip.style.left = (coords.left + 20) + 'px';
+        tooltip.style.top = (coords.top + 20) + 'px'; 
+        tooltip.style.display = 'block';
+        if (mode === 'params') {
+            tooltip.innerHTML = `<span class="suggestion-match">${match.name}</span>(<span class="suggestion-param">${match.params}</span>)`;
+        } else {
+            tooltip.innerHTML = match.map((m, i) => `<div class="${i===0?'bg-blue-900 bg-opacity-50':''}"><span class="suggestion-match">${m.name}</span></div>`).join('');
+        }
+    } else { tooltip.style.display = 'none'; }
+}
+
+/* --- Input Handling --- */
+const keysPressed = {};
+window.addEventListener('keydown', (e) => { 
+    if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') { 
+        if (e.key === 'Enter' && e.target.id === 'user-input') submitInput();
+        if (e.key !== 'Escape') return; 
+    }
+    if (e.key === 'Escape') {
+         const container = document.getElementById('game-container');
+         if (container.classList.contains('fixed-fullscreen')) toggleFullscreen();
+         if(!document.getElementById('help-modal').classList.contains('hidden')) toggleHelpModal();
+    }
+    keysPressed[e.key] = true; keysPressed[e.code] = true; 
+});
+window.addEventListener('keyup', (e) => { 
+    if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+    keysPressed[e.key] = false; keysPressed[e.code] = false; 
+});
+
+const keyMap = { 'up_arrow': 'ArrowUp', 'down_arrow': 'ArrowDown', 'left_arrow': 'ArrowLeft', 'right_arrow': 'ArrowRight', 'space': 'Space', 'enter': 'Enter' };
+
+/* --- Fullscreen Logic --- */
+function toggleFullscreen() {
+    const container = document.getElementById('game-container');
+    const icon = document.getElementById('fs-icon');
+    container.classList.toggle('fixed-fullscreen');
+    if (container.classList.contains('fixed-fullscreen')) {
+        icon.classList.remove('fa-expand'); icon.classList.add('fa-compress');
+    } else {
+        icon.classList.remove('fa-compress'); icon.classList.add('fa-expand');
+    }
+}
+
+/* --- Color Picker Logic --- */
+async function activateColorPicker() {
+    if (window.EyeDropper) {
+        const eyeDropper = new EyeDropper();
+        try {
+            const result = await eyeDropper.open();
+            insertColor(result.sRGBHex);
+        } catch (e) {}
+    } else {
+        const picker = document.getElementById('fallback-color-picker');
+        picker.style.pointerEvents = 'auto'; 
+        picker.click();
+        picker.style.pointerEvents = 'none'; 
+    }
+}
+
+function insertColor(hex) {
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    const text = editor.value;
+    const insert = `"${hex}"`;
+    document.execCommand('insertText', false, insert);
+    const s = getActiveSprite();
+    if (s && s.activeThreadId) {
+        const thread = s.threads.find(t => t.id === s.activeThreadId);
+        if (thread) thread.code = editor.value;
+    }
+}
+
+/* --- Save/Load/Publish --- */
+function saveProject() {
+    const project = { sprites: sprites, backdrop: backdrop, globalVars: globalVars };
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(project));
+    const a = document.createElement('a'); a.href = dataStr; a.download = "project.ps"; document.body.appendChild(a); a.click(); a.remove();
+}
+
+function loadProject(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = JSON.parse(e.target.result);
+            const loadedSprites = Array.isArray(data) ? data : data.sprites;
+            const loadedBackdrop = data.backdrop || null;
+
+            stopGame();
+            sprites = loadedSprites.map(s => hydrateEntity(s));
+            if (loadedBackdrop) backdrop = hydrateEntity(loadedBackdrop); else initBackdrop();
+
+            if (sprites.length > 0) selectSprite(sprites[0].id); else selectSprite('backdrop');
+            draw();
+        } catch(err) { alert("Load Failed: " + err.message); }
+    };
+    reader.readAsText(file);
+    input.value = ""; 
+}
+
+function hydrateEntity(data) {
+    const s = new Sprite(data.id); 
+    Object.assign(s, data);
+    
+    // Migration: Old 'code' property to 'threads'
+    if (s.code && (!s.threads || s.threads.length === 0)) {
+        s.threads = [{ id: 't'+Date.now(), name: 'Main', code: s.code }];
+        s.activeThreadId = s.threads[0].id;
+    }
+
+    // Migration: Old single image to costumes
+    if (s.image && (!s.costumes || s.costumes.length === 0)) {
+        s.costumes = [{ name: 'default', url: s.image, _imgObj: new Image() }];
+        s.costumeIndex = 0;
+    }
+    
+    // Rehydrate costumes
+    if (s.costumes) {
+        s.costumes.forEach(c => {
+            c._imgObj = new Image();
+            if(c.url) c._imgObj.src = c.url;
+            c._imgObj.onload = () => { draw(); renderSpriteList(); renderCostumeList(); };
+        });
+    }
+    
+    return s;
+}
+
+function publishGame() {
+    const spritesData = JSON.stringify(sprites); 
+    const keyMapStr = JSON.stringify(keyMap);
+    const transpileSrc = transpilePythonToJS.toString();
+
+    // Construct HTML using array join to avoid template literal nesting issues
+    const parts = [
+        `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My PyScratch Game</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; display: flex; align-items: center; justify-content: center; height: 100vh; }
+        canvas { background-color: #181818; max-width: 100%; max-height: 100%; aspect-ratio: 16/9; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        /* Input Prompt */
+        #input-prompt { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(30, 30, 30, 0.95); border: 2px solid #3b82f6; padding: 10px; border-radius: 8px; display: flex; gap: 8px; align-items: center; width: 80%; max-width: 400px; z-index: 100; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        #input-prompt.hidden { display: none; }
+        #input-question { position: absolute; top: -25px; left: 0; background: rgba(0,0,0,0.7); color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; white-space: nowrap; }
+    </style>
+</head>
+<body>
+    <div id="game-container" style="position: relative; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center;">
+        <canvas id="gameCanvas" width="640" height="360"></canvas>
+        <div id="input-prompt" class="hidden">
+            <div id="input-question">Question?</div>
+            <input type="text" id="user-input" style="flex:1; background:#1f2937; border:1px solid #4b5563; color:white; padding:4px 8px; border-radius:4px; outline:none;" autocomplete="off">
+            <button onclick="submitInput()" style="background:#2563eb; color:white; padding:4px 8px; border-radius:4px; border:none; cursor:pointer;">OK</button>
+        </div>
+    </div>
+    <script>
+        const projectData = ${JSON.stringify({
+            sprites: sprites.map(s => ({
+                id: s.id, name: s.name, isStage: false,
+                x: s.x, y: s.y, size: s.size, angle: s.angle,
+                color: s.color, rotationStyle: s.rotationStyle,
+                costumes: s.costumes.map(c => ({name: c.name, url: c.url})),
+                costumeIndex: s.costumeIndex,
+                threads: s.threads
+            })),
+            backdrop: {
+                id: backdrop.id, name: backdrop.name, isStage: true,
+                color: backdrop.color,
+                costumes: backdrop.costumes.map(c => ({name: c.name, url: c.url})),
+                costumeIndex: backdrop.costumeIndex,
+                threads: backdrop.threads
+            },
+            globalVars: globalVars
+        })};
+        const keyMap = ${keyMapStr};
+        
+        window.canvas = document.getElementById('gameCanvas');
+        window.ctx = window.canvas.getContext('2d');
+        const helperCanvas = document.createElement('canvas');
+        const helperCtx = helperCanvas.getContext('2d');
+
+        let executionId = 0;
+        const keysPressed = {};
+        let pendingInputResolve = null;
+        
+        let globalVars = projectData.globalVars || {}; 
+        let watchedVars = {}; 
+        
+        let sprites = projectData.sprites;
+        let backdrop = projectData.backdrop;
+
+        function initEntity(e) {
+            e.getCurrentCostume = function() {
+                if (!this.costumes || this.costumes.length === 0) return null;
+                if (this.costumeIndex >= this.costumes.length) this.costumeIndex = 0;
+                return this.costumes[this.costumeIndex];
+            };
+            e.costumes.forEach(c => {
+                c._imgObj = new Image();
+                c._imgObj.src = c.url;
+            });
+        }
+
+        initEntity(backdrop);
+        sprites.forEach(initEntity);
+
+        // Input Logic
+        function ask(question) {
+            return new Promise(resolve => {
+                pendingInputResolve = resolve;
+                const p = document.getElementById('input-prompt');
+                document.getElementById('input-question').innerText = question;
+                document.getElementById('user-input').value = "";
+                p.classList.remove('hidden');
+                document.getElementById('user-input').focus();
+            });
+        }
+        window.ask = ask; // Expose
+
+        window.submitInput = function() {
+            if (pendingInputResolve) {
+                const val = document.getElementById('user-input').value;
+                document.getElementById('input-prompt').classList.add('hidden');
+                pendingInputResolve(val);
+                pendingInputResolve = null;
+            }
+        };
+
+        window.addEventListener('keydown', (e) => { 
+            if(e.key === 'Enter' && !document.getElementById('input-prompt').classList.contains('hidden')) {
+                submitInput();
+                return;
+            }
+            keysPressed[e.key] = true; keysPressed[e.code] = true; 
+        });
+        window.addEventListener('keyup', (e) => { keysPressed[e.key] = false; keysPressed[e.code] = false; });
+
+        async function _tick(myExecId) {
+            if (myExecId !== executionId) throw "STOP"; 
+            await new Promise(r => setTimeout(r, 16)); 
+        }
+
+        // Embedded Transpiler
+        ${transpileSrc}
+
+        function draw() {
+            window.ctx.clearRect(0, 0, 640, 360);
+            
+            const drawEntity = (entity) => {
+                const costume = entity.getCurrentCostume();
+                if (!costume || !costume._imgObj || !costume._imgObj.complete || costume._imgObj.naturalWidth === 0) {
+                    if (entity.isStage) {
+                        window.ctx.fillStyle = entity.color; window.ctx.fillRect(0,0,640,360);
+                    } else {
+                        window.ctx.fillStyle = entity.color; window.ctx.fillRect(-entity.size/2, -entity.size/2, entity.size, entity.size);
+                    }
+                    return;
+                }
+
+                const img = costume._imgObj;
+                let w, h;
+
+                if (entity.isStage) {
+                    w = 640; h = 360;
+                    if (entity.color.toLowerCase() === '#ffffff') {
+                        window.ctx.drawImage(img, 0, 0, w, h);
+                    } else {
+                        helperCanvas.width = w; helperCanvas.height = h;
+                        helperCtx.clearRect(0,0,w,h);
+                        helperCtx.drawImage(img, 0,0,w,h);
+                        helperCtx.globalCompositeOperation = 'source-atop';
+                        helperCtx.fillStyle = entity.color;
+                        helperCtx.globalAlpha = 0.5;
+                        helperCtx.fillRect(0,0,w,h);
+                        helperCtx.globalCompositeOperation = 'source-over';
+                        helperCtx.globalAlpha = 1;
+                        window.ctx.drawImage(helperCanvas, 0, 0);
+                    }
+                } else {
+                    const boxSize = entity.size;
+                    const ratio = img.naturalWidth / img.naturalHeight;
+                    if (ratio > 1) { w = boxSize; h = boxSize / ratio; } else { h = boxSize; w = boxSize * ratio; }
+
+                    if (entity.color.toLowerCase() === '#ffffff') {
+                        window.ctx.drawImage(img, -w/2, -h/2, w, h);
+                    } else {
+                        helperCanvas.width = w; helperCanvas.height = h;
+                        helperCtx.clearRect(0,0,w,h);
+                        helperCtx.drawImage(img, 0,0,w,h);
+                        helperCtx.globalCompositeOperation = 'source-atop';
+                        helperCtx.fillStyle = entity.color;
+                        helperCtx.globalAlpha = 0.5;
+                        helperCtx.fillRect(0,0,w,h);
+                        helperCtx.globalCompositeOperation = 'source-over';
+                        helperCtx.globalAlpha = 1;
+                        window.ctx.drawImage(helperCanvas, -w/2, -h/2, w, h);
+                    }
+                }
+            };
+
+            const drawBubble = (ctx, x, y, text, type) => {
+                if (!text) return;
+                ctx.font = "14px Arial";
+                const padding = 10;
+                const metrics = ctx.measureText(text);
+                const w = Math.max(20, metrics.width + padding * 2);
+                const h = 30;
+                
+                const bx = x + 30;
+                const by = y - 50;
+                const r = 10;
+
+                ctx.save();
+                ctx.fillStyle = "white";
+                ctx.strokeStyle = "gray";
+                ctx.lineWidth = 2;
+                
+                if (type === 'say') {
+                    // Speech Bubble
+                    ctx.beginPath();
+                    ctx.moveTo(bx + r, by);
+                    ctx.lineTo(bx + w - r, by);
+                    ctx.quadraticCurveTo(bx + w, by, bx + w, by + r);
+                    ctx.lineTo(bx + w, by + h - r);
+                    ctx.quadraticCurveTo(bx + w, by + h, bx + w - r, by + h);
+                    ctx.lineTo(bx + 20, by + h); // Tail start
+                    ctx.lineTo(bx, by + h + 15); // Tail tip
+                    ctx.lineTo(bx + 10, by + h); // Tail end
+                    ctx.lineTo(bx + r, by + h);
+                    ctx.quadraticCurveTo(bx, by + h, bx, by + h - r);
+                    ctx.lineTo(bx, by + r);
+                    ctx.quadraticCurveTo(bx, by, bx + r, by);
+                    ctx.fill();
+                    ctx.stroke();
+                } else {
+                    // Think Bubble (Cloud)
+                    ctx.beginPath();
+                    ctx.arc(bx + 10, by + 10, 15, Math.PI, 0); 
+                    ctx.arc(bx + w - 10, by + 10, 15, Math.PI, 0);
+                    ctx.arc(bx + w/2, by + h, 15, 0, Math.PI);
+                    ctx.fill();
+                    ctx.stroke();
+                    // Bubbles
+                    ctx.beginPath(); ctx.arc(bx - 5, by + h + 5, 4, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+                    ctx.beginPath(); ctx.arc(bx - 12, by + h + 12, 2, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+                }
+
+                ctx.fillStyle = "black";
+                ctx.fillText(text, bx + padding, by + 20);
+                ctx.restore();
+            };
+
+            drawEntity(backdrop);
+            sprites.forEach(s => {
+                window.ctx.save();
+                window.ctx.translate(s.x, s.y);
+                
+                if (s.speech) {
+                    // Draw bubble before rotating sprite back? No, bubble is absolute position usually
+                    // But we are translated to s.x, s.y
+                    // Let's reset transform to draw bubble or draw relative
+                    // Better to draw bubble after restoring context to avoid rotation
+                }
+
+                let visAngle = 0; let scX = 1;
+                if (s.rotationStyle === 'all-around') visAngle = (s.angle - 90) * (Math.PI / 180);
+                else if (s.rotationStyle === 'left-right') {
+                    const dx = Math.cos((s.angle - 90) * (Math.PI / 180));
+                    if (dx < -0.001) { scX = -1; visAngle = 0; }
+                }
+                window.ctx.rotate(visAngle);
+                window.ctx.scale(scX, 1);
+                drawEntity(s);
+                window.ctx.restore();
+
+                if (s.speech) {
+                    drawBubble(window.ctx, s.x, s.y, s.speech.text, s.speech.type);
+                }
+            });
+            
+            let varY = 10;
+            window.ctx.font = "bold 14px monospace";
+            window.ctx.textBaseline = "top";
+            for (const [name, visible] of Object.entries(watchedVars)) {
+                if (visible) {
+                    const val = globalVars[name] !== undefined ? globalVars[name] : 0;
+                    const text = name + ": " + val;
+                    const metrics = window.ctx.measureText(text);
+                    window.ctx.fillStyle = "rgba(255, 140, 0, 0.9)"; 
+                    window.ctx.fillRect(10, varY, metrics.width + 10, 24);
+                    window.ctx.fillStyle = "white";
+                    window.ctx.fillText(text, 15, varY + 5);
+                    varY += 30;
+                }
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+        function runEntityCode(code, contextId, getExecId) {
+            try {
+                const js = transpilePythonToJS(code, contextId);
+                const f = new Function('sprites', 'backdrop', 'contextId', 'executionId', '_tick', 'keysPressed', 'keyMap', 'globalVars', 'watchedVars', 'canvas', 'ctx', 'getExecId', 'ask', \`
+                    return (async () => { \${js} })();
+                \`);
+                f(sprites, backdrop, contextId, executionId, _tick, keysPressed, keyMap, globalVars, watchedVars, window.canvas, window.ctx, getExecId, window.ask);
+            } catch (err) {
+                console.error("Runtime Error in " + name, err);
+            }
+        }
+
+        window.onload = () => {
+            requestAnimationFrame(draw);
+            executionId++;
+            
+            const getExecId = () => executionId;
+
+            sprites.forEach((s, index) => {
+               if(s.threads) {
+                   s.threads.forEach(t => runEntityCode(t.code, index, getExecId));
+               }
+            });
+            
+            if(backdrop && backdrop.threads) {
+                 backdrop.threads.forEach(t => runEntityCode(t.code, 'backdrop', getExecId));
+            }
+        };
+    <\/script>
+</body>
+</html>`
+    ];
+
+    const blob = new Blob([parts.join('')], {type: 'text/html'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = "my-game.html";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+/* --- Dial Interaction --- */
+const dial = document.getElementById('direction-dial');
+let isDraggingDial = false;
+dial.addEventListener('mousedown', (e) => { isDraggingDial = true; updateDialFromMouse(e); });
+window.addEventListener('mousemove', (e) => { if (isDraggingDial) updateDialFromMouse(e); });
+window.addEventListener('mouseup', () => { isDraggingDial = false; });
+
+function updateDialFromMouse(e) {
+    if (!activeSpriteId || activeSpriteId === 'backdrop') return;
+    const rect = dial.getBoundingClientRect();
+    const dx = e.clientX - (rect.left + rect.width / 2);
+    const dy = e.clientY - (rect.top + rect.height / 2);
+    let deg = (Math.atan2(dy, dx) * 180 / Math.PI) + 90;
+    if (deg > 180) deg -= 360; if (deg <= -180) deg += 360;
+    updateSpriteProp('angle', Math.round(deg / 5) * 5);
+}
+
+/* --- Drag Logic --- */
+let isDragging = false; let dragOffsetX = 0; let dragOffsetY = 0;
+canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mX = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const mY = (e.clientY - rect.top) * (canvas.height / rect.height);
+    
+    for (let i = sprites.length - 1; i >= 0; i--) {
+        const s = sprites[i];
+        if (mX >= s.x - s.size/2 && mX <= s.x + s.size/2 && mY >= s.y - s.size/2 && mY <= s.y + s.size/2) {
+            isDragging = true; activeSpriteId = s.id;
+            dragOffsetX = mX - s.x; dragOffsetY = mY - s.y;
+            selectSprite(s.id);
+            return;
+        }
+    }
+});
+window.addEventListener('mousemove', (e) => {
+    if (!isDragging || activeSpriteId === null || activeSpriteId === 'backdrop') return;
+    const rect = canvas.getBoundingClientRect();
+    const mX = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const mY = (e.clientY - rect.top) * (canvas.height / rect.height);
+    const s = sprites.find(sp => sp.id === activeSpriteId);
+    if(s) {
+        s.x = Math.max(0, Math.min(640, mX - dragOffsetX));
+        s.y = Math.max(0, Math.min(360, mY - dragOffsetY));
+        document.getElementById('prop-x').value = Math.round(s.x);
+        document.getElementById('prop-y').value = Math.round(s.y);
+        draw();
+    }
+});
+window.addEventListener('mouseup', () => { isDragging = false; });
+
+/* --- Utilities --- */
+function getRandomHexColor() { return "#" + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0'); }
+
+/* --- Logic Classes --- */
+class Sprite {
+    constructor(id) {
+        this.id = id;
+        this.name = (id === 'backdrop') ? 'Stage' : `Sprite ${id}`;
+        this.isStage = (id === 'backdrop');
+        this.x = 320; this.y = 180;
+        this.size = 100; this.angle = 90;
+        this.color = "#ffffff";
+        this.rotationStyle = 'all-around';
+        
+        // Speech State
+        this.speech = null; // { text: "Hello", type: "say"|"think" }
+
+        // Costumes
+        this.costumes = [];
+        this.costumeIndex = 0;
+
+        // Threads
+        this.threads = [];
+        // activeThreadId will be set when added
+
+        if (this.isStage) {
+            this.addCostume("backdrop1", "https://www.solidbackgrounds.com/images/1600x900/1600x900-light-sky-blue-solid-color-background.jpg");
+            const t = { id: 't'+Date.now(), name: 'Logic', code: `# Stage Code\ndef game_start():\n    # set_variable("score", 0)\n    # display_variable("score", True)\n    while True:\n        pass # Background logic` };
+            this.threads.push(t);
+            this.activeThreadId = t.id;
+        } else {
+            this.addCostume("costume1", "https://images-wixmp-ed30a86b8c4ca887773594c2.wixmp.com/f/3f4ec842-6f7a-4d31-ab32-a35b7c42e7d8/dg4sdkn-91c06c33-263f-458b-b4c1-b1b67417d9ef.png/v1/fill/w_850,h_940/scratch_cat__by_dazzlerlemmykoopa200_dg4sdkn-pre.png?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1cm46YXBwOjdlMGQxODg5ODIyNjQzNzNhNWYwZDQxNWVhMGQyNmUwIiwiaXNzIjoidXJuOmFwcDo3ZTBkMTg4OTgyMjY0MzczYTVmMGQ0MTVlYTBkMjZlMCIsIm9iaiI6W1t7ImhlaWdodCI6Ijw9MTMyOCIsInBhdGgiOiJcL2ZcLzNmNGVjODQyLTZmN2EtNGQzMS1hYjMyLWEzNWI3YzQyZTdkOFwvZGc0c2Rrbi05MWMwNmMzMy0yNjNmLTQ1OGItYjRjMS1iMWI2NzQxN2Q5ZWYucG5nIiwid2lkdGgiOiI8PTEyMDAifV1dLCJhdWQiOlsidXJuOnNlcnZpY2U6aW1hZ2Uub3BlcmF0aW9ucyJdfQ.ZxxVxrRmyb2XYK6_b9WXA4rJrk52oUCo7t8-fZF4qF4");
+            const t = { id: 't'+Date.now(), name: 'Main', code: `# Sprite Code\ndef game_start():\n    say("Hello!")\n    wait(2)\n    while True:\n        move_steps(2)\n        if_on_edge_bounce()` };
+            this.threads.push(t);
+            this.activeThreadId = t.id;
+        }
+    }
+
+    addCostume(name, url) {
+        const c = { name, url, _imgObj: new Image() };
+        c._imgObj.src = url;
+        c._imgObj.onload = () => { draw(); renderCostumeList(); renderSpriteList(); };
+        this.costumes.push(c);
+    }
+    
+    getCurrentCostume() {
+        if (!this.costumes || this.costumes.length === 0) return null;
+        if (this.costumeIndex >= this.costumes.length) this.costumeIndex = 0;
+        return this.costumes[this.costumeIndex];
+    }
+}
+
+function initBackdrop() {
+    backdrop = new Sprite('backdrop');
+}
+
+function addSprite() {
+    const s = new Sprite(Date.now());
+    sprites.push(s);
+    renderSpriteList();
+    selectSprite(s.id);
+    draw();
+}
+
+function deleteSprite(id, e) {
+    e.stopPropagation();
+    deleteTarget = { type: 'sprite', id: id };
+    document.getElementById('delete-type').innerText = 'Sprite';
+    document.getElementById('delete-modal').classList.remove('hidden');
+}
+
+function deleteThread(id) {
+    deleteTarget = { type: 'thread', id: id };
+    document.getElementById('delete-type').innerText = 'Thread';
+    document.getElementById('delete-modal').classList.remove('hidden');
+}
+
+function confirmDelete() {
+    if (!deleteTarget) return;
+    
+    if (deleteTarget.type === 'sprite') {
+        const idx = sprites.findIndex(s => s.id === deleteTarget.id);
+        if(idx !== -1) {
+            sprites.splice(idx, 1);
+            if(activeSpriteId === deleteTarget.id) {
+                selectSprite(sprites.length > 0 ? sprites[Math.max(0, idx-1)].id : 'backdrop');
+            }
+            renderSpriteList(); draw();
+        }
+    } else if (deleteTarget.type === 'thread') {
+        const s = getActiveSprite();
+        if(s && s.threads.length > 1) { // Force keep at least one
+            const idx = s.threads.findIndex(t => t.id === deleteTarget.id);
+            if(idx !== -1) {
+                s.threads.splice(idx, 1);
+                if(s.activeThreadId === deleteTarget.id) {
+                    selectThread(s.threads[Math.max(0, idx-1)].id);
+                } else {
+                    renderThreadList();
+                }
+            }
+        } else {
+            alert("Cannot delete the last thread.");
+        }
+    }
+    closeDeleteModal();
+}
+function closeDeleteModal() { deleteTarget = null; document.getElementById('delete-modal').classList.add('hidden'); }
+
+function selectSprite(id) {
+    // Current sprite active thread is already saved in memory on input
+    activeSpriteId = id;
+    const target = (id === 'backdrop') ? backdrop : sprites.find(s => s.id === id);
+    if (!target) return;
+
+    // Load active thread for this sprite
+    const thread = target.threads.find(t => t.id === target.activeThreadId) || target.threads[0];
+    if(thread) {
+        target.activeThreadId = thread.id;
+        editor.value = thread.code;
+    } else {
+        editor.value = ""; // Should not happen
+    }
+
+    document.getElementById('prop-name').value = target.name;
+    document.getElementById('editor-label').innerText = target.name + ".py";
+    
+    const spriteProps = document.getElementById('sprite-props');
+    if (target.isStage) {
+        spriteProps.style.display = 'none';
+    } else {
+        spriteProps.style.display = 'flex';
+        document.getElementById('prop-x').value = Math.round(target.x);
+        document.getElementById('prop-y').value = Math.round(target.y);
+        document.getElementById('prop-size').value = target.size;
+        document.getElementById('prop-angle').value = Math.round(target.angle);
+        updateRotationModeUI(target.rotationStyle);
+    }
+    document.getElementById('prop-color').value = target.color;
+    
+    renderSpriteList();
+    renderThreadList();
+    if (activeTab === 'costumes') renderCostumeList();
+}
+
+function updateSpriteProp(prop, value) {
+    const target = (activeSpriteId === 'backdrop') ? backdrop : sprites.find(s => s.id === activeSpriteId);
+    if (!target) return;
+    if (['x','y','size','angle'].includes(prop) && isNaN(value)) return;
+    
+    if (prop === 'x') value = Math.max(0, Math.min(640, value));
+    if (prop === 'y') value = Math.max(0, Math.min(360, value));
+    
+    target[prop] = value;
+    
+    if (prop === 'angle' && !target.isStage) {
+         document.getElementById('dial-hand').style.transform = `translate(-50%, -100%) rotate(${value}deg)`;
+         document.getElementById('prop-angle').value = value;
+    }
+    renderSpriteList(); draw();
+}
+
+function updateRotationStyle(style) {
+    const s = sprites.find(i => i.id === activeSpriteId);
+    if(!s) return;
+    s.rotationStyle = style;
+    updateRotationModeUI(style);
+    draw();
+}
+
+function updateRotationModeUI(style) {
+    document.getElementById('mode-all').classList.toggle('active', style === 'all-around');
+    document.getElementById('mode-lr').classList.toggle('active', style === 'left-right');
+    document.getElementById('mode-none').classList.toggle('active', style === 'no-rotation');
+}
+
+function renderSpriteList() {
+    const list = document.getElementById('sprite-list');
+    list.innerHTML = '';
+    
+    // Helper to draw thumbnail for a sprite
+    const createThumb = (s, isActive) => {
+        const el = document.createElement('div');
+        el.className = `sprite-card relative group w-20 h-24 bg-gray-800 rounded flex flex-col items-center justify-center cursor-pointer transition p-2 ${isActive ? 'active' : ''}`;
+        el.onclick = () => selectSprite(s.id);
+
+        if (!s.isStage) {
+            const delBtn = document.createElement('button');
+            delBtn.className = "absolute top-1 right-1 w-5 h-5 flex items-center justify-center bg-gray-900 rounded-full text-gray-400 hover:text-red-500 hover:bg-white opacity-0 group-hover:opacity-100 transition shadow-sm z-10";
+            delBtn.innerHTML = '<i class="fa-solid fa-trash-can text-[10px]"></i>';
+            delBtn.onclick = (e) => deleteSprite(s.id, e);
+            el.appendChild(delBtn);
+        }
+
+        const thumbBox = document.createElement('div');
+        thumbBox.className = "w-10 h-10 mb-2 rounded border border-gray-600 overflow-hidden bg-gray-700 flex items-center justify-center";
+        
+        const costume = s.getCurrentCostume();
+        if (costume && costume._imgObj && costume._imgObj.src) {
+            const img = document.createElement('img'); img.src = costume._imgObj.src; img.className = "w-full h-full object-cover"; thumbBox.appendChild(img);
+        } else {
+            thumbBox.style.backgroundColor = s.color;
+        }
+        
+        const name = document.createElement('span'); 
+        name.className = "text-xs text-gray-300 truncate w-full text-center"; 
+        name.innerText = s.name;
+        
+        el.appendChild(thumbBox);
+        el.appendChild(name);
+        return el;
+    };
+
+    const bgEl = createThumb(backdrop, activeSpriteId === 'backdrop');
+    bgEl.classList.add('border-r-4', 'border-gray-900'); 
+    list.appendChild(bgEl);
+
+    sprites.forEach(s => {
+        list.appendChild(createThumb(s, s.id === activeSpriteId));
+    });
+    
+    const addBtn = document.createElement('button');
+    addBtn.onclick = addSprite;
+    addBtn.className = "w-20 h-24 rounded border-2 border-dashed border-gray-600 hover:border-blue-500 hover:text-blue-500 text-gray-600 flex items-center justify-center transition";
+    addBtn.innerHTML = '<i class="fa-solid fa-plus text-xl"></i>';
+    list.appendChild(addBtn);
+}
+
+/* --- Core Engine --- */
+async function _tick(myExecId) {
+    if (myExecId !== executionId) throw "STOP"; 
+    await new Promise(r => setTimeout(r, 16)); 
+}
+
+function transpilePythonToJS(code, contextId) {
+    const lines = code.split('\n');
+    let jsCode = `
+    const target = (contextId === 'backdrop') ? backdrop : sprites[contextId];
+    const myExecId = ${executionId};
+    
+    // --- API ---
+    const set_variable = (n, v) => { globalVars[n] = v; };
+    const get_variable = (n) => { return globalVars[n]; };
+    const display_variable = (n, b) => { watchedVars[n] = b; };
+    
+    const set_color = (...args) => { 
+        if (args.length === 1) target.color = args[0];
+        else if (args.length === 3) target.color = "#" + ((1 << 24) + (args[0] << 16) + (args[1] << 8) + args[2]).toString(16).slice(1);
+    };
+
+    const next_costume = () => { if (target.costumes.length > 0) target.costumeIndex = (target.costumeIndex + 1) % target.costumes.length; };
+    const switch_costume = (val) => {
+        if (typeof val === 'number') { if (val >= 0 && val < target.costumes.length) target.costumeIndex = Math.floor(val); }
+        else { const idx = target.costumes.findIndex(c => c.name === val); if (idx !== -1) target.costumeIndex = idx; }
+    };
+    
+    const set_x = (v) => { if(!target.isStage) target.x = Math.max(0, Math.min(640, v)); };
+    const set_y = (v) => { if(!target.isStage) target.y = Math.max(0, Math.min(360, v)); };
+    const set_position = (x,y) => { set_x(x); set_y(y); };
+    const go_to = (x,y) => { set_position(x,y); };
+    const change_x = (v) => { set_x(target.x + v); };
+    const change_y = (v) => { set_y(target.y + v); };
+    
+    const move_steps = (num) => {
+        if(target.isStage) return;
+        const theta = (target.angle - 90) * (Math.PI / 180);
+        set_x(target.x + Math.cos(theta) * num);
+        set_y(target.y + Math.sin(theta) * num);
+    };
+    const move = (num) => move_steps(num); 
+    
+    const turn_right = (deg) => { if(!target.isStage) target.angle += deg; };
+    const turn_left = (deg) => { if(!target.isStage) target.angle -= deg; };
+    const point_towards = (deg) => { if(!target.isStage) target.angle = deg; };
+    
+    const if_on_edge_bounce = () => {
+        if(target.isStage) return;
+        let bounced = false;
+        if (target.x <= 0 || target.x >= 640) { target.angle = -target.angle; bounced = true; }
+        if (target.y <= 0 || target.y >= 360) { target.angle = 180 - target.angle; bounced = true; }
+        if(bounced) { target.x = Math.max(1, Math.min(639, target.x)); target.y = Math.max(1, Math.min(359, target.y)); }
+    };
+
+    const touching_sprite = (name) => {
+        const other = sprites.find(s => s.name === name);
+        if (!other || other === target) return false;
+        const dx = target.x - other.x;
+        const dy = target.y - other.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        return dist < (target.size/2 + other.size/2);
+    };
+
+    const touching_color = (hex) => {
+        const px = Math.floor(target.x);
+        const py = Math.floor(target.y);
+        // Use global ctx/canvas
+        if (px < 0 || px >= 640 || py < 0 || py >= 360) return false;
+        const p = ctx.getImageData(px, py, 1, 1).data;
+        const currentHex = "#" + ((1 << 24) + (p[0] << 16) + (p[1] << 8) + p[2]).toString(16).slice(1);
+        return currentHex === hex.toLowerCase();
+    };
+
+    const key_pressed = (k) => {
+        const map = ${JSON.stringify(keyMap)};
+        const lookup = map[k] || k;
+        return !!keysPressed[lookup] || !!keysPressed[k];
+    };
+
+    // Use getExecId() to check current global state, not captured state
+    const wait = async (secs) => { 
+        await new Promise(resolve => setTimeout(resolve, secs * 1000)); 
+        if (myExecId !== getExecId()) throw "STOP"; 
+    };
+
+    // New Functions
+    const say = async (msg, secs=2) => {
+        target.speech = { text: String(msg), type: 'say' };
+        if (secs > 0) {
+            await wait(secs);
+            target.speech = null;
+        }
+    };
+    const think = async (msg, secs=2) => {
+        target.speech = { text: String(msg), type: 'think' };
+        if (secs > 0) {
+            await wait(secs);
+            target.speech = null;
+        }
+    };
+    const print = say;
+
+    // Ask returns promise, needs global resolver
+    const ask = async (q) => {
+        return window.ask(q);
+    };
+    const input = ask;
+    
+    const x = target.x; const y = target.y;
+    
+    /* GENERATED */
+    `;
+
+    const indentStack = [0]; 
+    lines.forEach(line => {
+        // Strip comments while preserving quoted strings
+        const cleanLine = line.replace(/("[^"]*"|'[^']*')|(#.*$)/g, (m, group1) => group1 || "");
+        
+        const trimmed = cleanLine.trimEnd(); 
+        
+        if (trimmed.trim().length === 0) return; 
+        
+        const content = trimmed.trimStart();
+        const indent = trimmed.length - content.length;
+        const currentIndent = indentStack[indentStack.length - 1];
+
+        if (indent > currentIndent) { indentStack.push(indent); jsCode += ` {\n`; } 
+        else { while (indent < indentStack[indentStack.length - 1]) { indentStack.pop(); jsCode += ` }\n`; } }
+
+        let processedLine = content;
+        if (processedLine.startsWith('def ')) processedLine = processedLine.replace(/def\s+(.*):/, 'async function $1');
+        else if (processedLine.startsWith('while ')) processedLine = processedLine.replace(/while\s+(.*):/, 'while ((await _tick(myExecId), $1))');
+        else if (processedLine.startsWith('if ')) processedLine = processedLine.replace(/if\s+(.*):/, 'if ($1)');
+        else if (processedLine.startsWith('elif ')) processedLine = processedLine.replace(/elif\s+(.*):/, 'else if ($1)');
+        else if (processedLine.startsWith('else:')) processedLine = 'else';
+        else if (processedLine === 'pass') processedLine = '// pass';
+
+        processedLine = processedLine.replace(/\bx\b(?!\()/g, 'target.x');
+        processedLine = processedLine.replace(/\by\b(?!\()/g, 'target.y');
+        processedLine = processedLine.replace(/\bTrue\b/g, 'true').replace(/\bFalse\b/g, 'false').replace(/\band\b/g, '&&').replace(/\bor\b/g, '||').replace(/\bnot\b/g, '!');
+        processedLine = processedLine.replace(/print\(/g, 'await print(');
+        processedLine = processedLine.replace(/say\(/g, 'await say(');
+        processedLine = processedLine.replace(/think\(/g, 'await think(');
+        processedLine = processedLine.replace(/ask\(/g, 'await ask(');
+        processedLine = processedLine.replace(/input\(/g, 'await input(');
+        processedLine = processedLine.replace(/\bwait\(/g, 'await wait(');
+
+        jsCode += processedLine + '\n';
+    });
+    while (indentStack.length > 1) { indentStack.pop(); jsCode += ` }\n`; }
+
+    jsCode += `
+    try { if (typeof game_start === 'function') await game_start(); } 
+    catch(e) { if(e !== "STOP") console.error(e); }
+    `;
+    return jsCode;
+}
+
+function runGame() {
+    stopGame();
+    if (activeSpriteId) {
+        const t = (activeSpriteId === 'backdrop') ? backdrop : sprites.find(i => i.id === activeSpriteId);
+        if(t && t.activeThreadId) {
+            const thread = t.threads.find(tr => tr.id === t.activeThreadId);
+            if(thread) thread.code = editor.value;
+        }
+    }
+    gameRunning = true;
+    executionId++;
+    globalVars = {}; 
+    watchedVars = {};
+    // Clear speech bubbles on run
+    if(backdrop) backdrop.speech = null;
+    sprites.forEach(s => s.speech = null);
+    
+    requestAnimationFrame(draw);
+
+    // Helper to get current ID for threads
+    const getExecId = () => executionId;
+
+    // Run Sprite Code - Iterate ALL threads
+    sprites.forEach((s, index) => { 
+        if(s.threads) s.threads.forEach(t => runEntityCode(t.code, index, getExecId));
+    });
+    // Run Backdrop Code - Iterate ALL threads
+    if(backdrop && backdrop.threads) {
+        backdrop.threads.forEach(t => runEntityCode(t.code, 'backdrop', getExecId));
+    }
+}
+
+function runEntityCode(code, contextId, getExecId) {
+    try {
+        const js = transpilePythonToJS(code, contextId);
+        // Pass ask to function scope
+        const f = new Function('sprites', 'backdrop', 'contextId', 'executionId', '_tick', 'keysPressed', 'keyMap', 'globalVars', 'watchedVars', 'canvas', 'ctx', 'getExecId', 'ask', `
+            return (async () => { ${js} })();
+        `);
+        f(sprites, backdrop, contextId, executionId, _tick, keysPressed, keyMap, globalVars, watchedVars, window.canvas, window.ctx, getExecId, window.ask);
+    } catch (err) {
+        console.error("Runtime Error:", err);
+    }
+}
+
+function stopGame() {
+    gameRunning = false; executionId++; 
+    document.getElementById('input-prompt').classList.add('hidden'); // Hide prompt on stop
+    setTimeout(() => { if (!gameRunning) draw(); }, 50);
+}
+
+function draw() {
+    // Use window.canvas/ctx
+    window.ctx.clearRect(0, 0, 640, 360);
+    
+    const drawEntity = (entity) => {
+        const costume = entity.getCurrentCostume();
+        if (!costume || !costume._imgObj || !costume._imgObj.complete || costume._imgObj.naturalWidth === 0) {
+            if (entity.isStage) {
+                window.ctx.fillStyle = entity.color; window.ctx.fillRect(0,0,640,360);
+            } else {
+                window.ctx.fillStyle = entity.color; window.ctx.fillRect(-entity.size/2, -entity.size/2, entity.size, entity.size);
+            }
+            return;
+        }
+
+        const img = costume._imgObj;
+        let w, h;
+
+        if (entity.isStage) {
+            w = 640; h = 360;
+            if (entity.color.toLowerCase() === '#ffffff') {
+                window.ctx.drawImage(img, 0, 0, w, h);
+            } else {
+                helperCanvas.width = w; helperCanvas.height = h;
+                helperCtx.clearRect(0,0,w,h);
+                helperCtx.drawImage(img, 0,0,w,h);
+                helperCtx.globalCompositeOperation = 'source-atop';
+                helperCtx.fillStyle = entity.color;
+                helperCtx.globalAlpha = 0.5;
+                helperCtx.fillRect(0,0,w,h);
+                helperCtx.globalCompositeOperation = 'source-over';
+                helperCtx.globalAlpha = 1;
+                window.ctx.drawImage(helperCanvas, 0, 0);
+            }
+        } else {
+            const boxSize = entity.size;
+            const ratio = img.naturalWidth / img.naturalHeight;
+            if (ratio > 1) { w = boxSize; h = boxSize / ratio; } else { h = boxSize; w = boxSize * ratio; }
+
+            if (entity.color.toLowerCase() === '#ffffff') {
+                window.ctx.drawImage(img, -w/2, -h/2, w, h);
+            } else {
+                helperCanvas.width = w; helperCanvas.height = h;
+                helperCtx.clearRect(0,0,w,h);
+                helperCtx.drawImage(img, 0,0,w,h);
+                helperCtx.globalCompositeOperation = 'multiply';
+                helperCtx.fillStyle = entity.color;
+                helperCtx.fillRect(0,0,w,h);
+                helperCtx.globalCompositeOperation = 'destination-in';
+                helperCtx.drawImage(img, 0, 0, w, h);
+                window.ctx.drawImage(helperCanvas, -w/2, -h/2, w, h);
+            }
+        }
+    };
+
+    const drawBubble = (ctx, x, y, text, type) => {
+        if (!text) return;
+        ctx.font = "14px Arial";
+        const padding = 10;
+        const metrics = ctx.measureText(text);
+        const w = Math.max(20, metrics.width + padding * 2);
+        const h = 30;
+        
+        // Bubbles appear up and to the right of sprite center
+        // Sprite drawn at x,y. Let's place bubble above it.
+        const bx = x + 20; 
+        const by = y - 60;
+        const r = 10;
+
+        ctx.save();
+        ctx.fillStyle = "white";
+        ctx.strokeStyle = "gray";
+        ctx.lineWidth = 2;
+        
+        if (type === 'say') {
+            // Speech Bubble
+            ctx.beginPath();
+            ctx.moveTo(bx + r, by);
+            ctx.lineTo(bx + w - r, by);
+            ctx.quadraticCurveTo(bx + w, by, bx + w, by + r);
+            ctx.lineTo(bx + w, by + h - r);
+            ctx.quadraticCurveTo(bx + w, by + h, bx + w - r, by + h);
+            ctx.lineTo(bx + 20, by + h); // Tail start top
+            ctx.lineTo(bx, by + h + 15); // Tail tip
+            ctx.lineTo(bx + 10, by + h); // Tail start bottom
+            ctx.lineTo(bx + r, by + h);
+            ctx.quadraticCurveTo(bx, by + h, bx, by + h - r);
+            ctx.lineTo(bx, by + r);
+            ctx.quadraticCurveTo(bx, by, bx + r, by);
+            ctx.fill();
+            ctx.stroke();
+        } else {
+            // Think Bubble (Cloud)
+            ctx.beginPath();
+            ctx.arc(bx + 10, by + 10, 15, Math.PI, 0); 
+            ctx.arc(bx + w - 10, by + 10, 15, Math.PI, 0);
+            ctx.arc(bx + w/2, by + h, 15, 0, Math.PI);
+            ctx.fill();
+            ctx.stroke();
+            // Bubbles tail
+            ctx.beginPath(); ctx.arc(bx - 5, by + h + 5, 4, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.arc(bx - 12, by + h + 12, 2, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        }
+
+        ctx.fillStyle = "black";
+        ctx.fillText(text, bx + padding, by + 20);
+        ctx.restore();
+    };
+
+    drawEntity(backdrop);
+
+    sprites.forEach(s => {
+        window.ctx.save();
+        window.ctx.translate(s.x, s.y);
+        let visAngle = 0; let scX = 1;
+        if (s.rotationStyle === 'all-around') visAngle = (s.angle - 90) * (Math.PI / 180);
+        else if (s.rotationStyle === 'left-right') {
+            const dx = Math.cos((s.angle - 90) * (Math.PI / 180));
+            if (dx < -0.001) { scX = -1; visAngle = 0; }
+        }
+        window.ctx.rotate(visAngle);
+        window.ctx.scale(scX, 1);
+        drawEntity(s);
+        window.ctx.restore();
+
+        if (s.speech) {
+            drawBubble(window.ctx, s.x, s.y, s.speech.text, s.speech.type);
+        }
+    });
+
+    let varY = 10;
+    window.ctx.font = "bold 14px monospace";
+    window.ctx.textBaseline = "top";
+    for (const [name, visible] of Object.entries(watchedVars)) {
+        if (visible) {
+            const val = globalVars[name] !== undefined ? globalVars[name] : 0;
+            const text = `${name}: ${val}`;
+            const metrics = window.ctx.measureText(text);
+            window.ctx.fillStyle = "rgba(255, 140, 0, 0.9)"; 
+            window.ctx.fillRect(10, varY, metrics.width + 10, 24);
+            window.ctx.fillStyle = "white";
+            window.ctx.fillText(text, 15, varY + 5);
+            varY += 30;
+        }
+    }
+
+    if (gameRunning) requestAnimationFrame(draw);
+}
+
+// Global ask function for use in threads
+window.ask = function(question) {
+    return new Promise(resolve => {
+        pendingInputResolve = resolve;
+        const p = document.getElementById('input-prompt');
+        document.getElementById('input-question').innerText = question;
+        document.getElementById('user-input').value = "";
+        p.classList.remove('hidden');
+        document.getElementById('user-input').focus();
+    });
+};
+
+window.submitInput = function() {
+    if (pendingInputResolve) {
+        const val = document.getElementById('user-input').value;
+        document.getElementById('input-prompt').classList.add('hidden');
+        pendingInputResolve(val);
+        pendingInputResolve = null;
+    }
+};
+
+// Initial
+window.onload = () => {
+    initBackdrop();
+    addSprite();
+    
+    // Editor Tab and Enter support
+    editor.addEventListener('keydown', function(e) {
+        if (e.key == 'Tab') {
+            e.preventDefault();
+            const start = this.selectionStart; const end = this.selectionEnd;
+            const value = this.value;
+
+            if (e.shiftKey) {
+                let lineStart = value.lastIndexOf('\n', start - 1) + 1;
+                let lineEnd = value.indexOf('\n', end);
+                if (lineEnd === -1) lineEnd = value.length;
+                this.setSelectionRange(lineStart, lineEnd);
+                const textBlock = value.substring(lineStart, lineEnd);
+                const unindentedBlock = textBlock.split('\n').map(line => line.replace(/^ {1,4}/, '')).join('\n');
+                document.execCommand('insertText', false, unindentedBlock);
+                this.setSelectionRange(lineStart, lineStart + unindentedBlock.length);
+            } else {
+                if (start !== end) {
+                    let lineStart = value.lastIndexOf('\n', start - 1) + 1;
+                    let lineEnd = value.indexOf('\n', end);
+                    if (lineEnd === -1) lineEnd = value.length;
+                    this.setSelectionRange(lineStart, lineEnd);
+                    const textBlock = value.substring(lineStart, lineEnd);
+                    const indentedBlock = textBlock.split('\n').map(line => "    " + line).join('\n');
+                    document.execCommand('insertText', false, indentedBlock);
+                    this.setSelectionRange(lineStart, lineStart + indentedBlock.length);
+                } else {
+                    document.execCommand('insertText', false, "    ");
+                }
+            }
+        } else if (e.key == 'Enter') {
+            e.preventDefault();
+            const start = this.selectionStart;
+            const value = this.value;
+            let lineStart = value.lastIndexOf('\n', start - 1) + 1;
+            const currentLine = value.substring(lineStart, start);
+            const match = currentLine.match(/^(\s*)/);
+            let indent = match ? match[1] : "";
+            if (currentLine.trim().endsWith(':')) { indent += "    "; }
+            document.execCommand('insertText', false, "\n" + indent);
+            updateTooltip(); 
+        }
+    });
+};
+</script>
+</body>
+</html>
