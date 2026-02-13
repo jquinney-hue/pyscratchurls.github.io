@@ -1764,6 +1764,10 @@ function transpilePythonToJS(code, contextId) {
         processedLine = processedLine.replace(/ask\(/g, 'await ask(');
         processedLine = processedLine.replace(/input\(/g, 'await input(');
         processedLine = processedLine.replace(/\bwait\(/g, 'await wait(');
+	processedLine = processedLine.replace(
+  /(random|math)\.randint\(([^,]+),\s*([^)]+)\)/g,
+  'Math.floor(Math.random() * ($3 - $2 + 1)) + $2'
+);
 
         jsCode += processedLine + '\n';
     });
