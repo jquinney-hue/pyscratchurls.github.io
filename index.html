@@ -1421,7 +1421,7 @@ class Sprite {
             this.activeThreadId = t.id;
         } else {
             this.addCostume("costume1", "https://images-wixmp-ed30a86b8c4ca887773594c2.wixmp.com/f/3f4ec842-6f7a-4d31-ab32-a35b7c42e7d8/dg4sdkn-91c06c33-263f-458b-b4c1-b1b67417d9ef.png/v1/fill/w_850,h_940/scratch_cat__by_dazzlerlemmykoopa200_dg4sdkn-pre.png?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1cm46YXBwOjdlMGQxODg5ODIyNjQzNzNhNWYwZDQxNWVhMGQyNmUwIiwiaXNzIjoidXJuOmFwcDo3ZTBkMTg4OTgyMjY0MzczYTVmMGQ0MTVlYTBkMjZlMCIsIm9iaiI6W1t7ImhlaWdodCI6Ijw9MTMyOCIsInBhdGgiOiJcL2ZcLzNmNGVjODQyLTZmN2EtNGQzMS1hYjMyLWEzNWI3YzQyZTdkOFwvZGc0c2Rrbi05MWMwNmMzMy0yNjNmLTQ1OGItYjRjMS1iMWI2NzQxN2Q5ZWYucG5nIiwid2lkdGgiOiI8PTEyMDAifV1dLCJhdWQiOlsidXJuOnNlcnZpY2U6aW1hZ2Uub3BlcmF0aW9ucyJdfQ.ZxxVxrRmyb2XYK6_b9WXA4rJrk52oUCo7t8-fZF4qF4");
-            const t = { id: 't'+Date.now(), name: 'Main', code: `# Sprite Code\ndef game_start():\n    say("Hello!")\n    wait(2)\n    while True:\n        move_steps(2)\n        if_on_edge_bounce()` };
+            const t = { id: 't'+Date.now(), name: 'Main', code: `def game_start():\n    ` };
             this.threads.push(t);
             this.activeThreadId = t.id;
         }
