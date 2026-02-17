@@ -1,0 +1,2446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PyScratch</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500&family=Roboto:wght@400;500;700&display=swap');
+        
+        body { font-family: 'Roboto', sans-serif; overflow: hidden; background-color: #e5e7eb; }
+        .code-editor { font-family: 'Roboto Mono', monospace; tab-size: 4; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+        .canvas-container {
+            background-image: linear-gradient(45deg, #ccc 25%, transparent 25%), 
+                              linear-gradient(-45deg, #ccc 25%, transparent 25%), 
+                              linear-gradient(45deg, transparent 75%, #ccc 75%), 
+                              linear-gradient(-45deg, transparent 75%, #ccc 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+
+        .sprite-thumb.selected { border: 2px solid #3b82f6; background-color: #dbeafe; }
+        
+        /* Angle Picker */
+        .angle-circle { cursor: pointer; position: relative; }
+        .angle-line { pointer-events: none; transition: transform 0.1s; }
+
+        /* Variable Display */
+        #variable-overlay { pointer-events: none; }
+        .var-box { pointer-events: auto; background: rgba(255, 140, 0, 0.9); color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; margin-bottom: 4px; border: 1px solid rgba(0,0,0,0.2); box-shadow: 2px 2px 0px rgba(0,0,0,0.1); }
+        .var-name { margin-right: 5px; opacity: 0.9; }
+        .var-value { background: rgba(0,0,0,0.2); padding: 0 4px; border-radius: 2px; }
+
+        /* Autocomplete */
+        #autocomplete-list { 
+            display: none; 
+            position: fixed; /* Changed from absolute to fixed */
+            background: white; 
+            border: 1px solid #cbd5e1; 
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); 
+            border-radius: 0.375rem;
+            z-index: 1000; /* Increased z-index */
+            max-height: 200px; 
+            overflow-y: auto; 
+            min-width: 280px;
+            font-family: 'Roboto Mono', monospace;
+            font-size: 12px;
+        }
+        .suggestion-item { padding: 4px 8px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #f1f5f9; }
+        .suggestion-item:hover, .suggestion-item.active { background-color: #e0e7ff; }
+        .badge { font-size: 9px; padding: 1px 4px; border-radius: 2px; color: white; font-weight: bold; width: 35px; text-align: center; margin-left: 8px; flex-shrink: 0; }
+        .suggestion-sig { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .badge-mov { background-color: #3b82f6; }
+        .badge-look { background-color: #a855f7; }
+        .badge-evt { background-color: #eab308; }
+        .badge-ctrl { background-color: #f59e0b; }
+        .badge-sens { background-color: #06b6d4; }
+        .badge-var { background-color: #f97316; }
+        .badge-rand { background-color: #22c55e; }
+    </style>
+</head>
+<body class="flex flex-col h-screen select-none">
+
+    <!-- Top Bar -->
+    <div class="h-12 bg-indigo-600 text-white flex items-center px-4 justify-between shadow-md z-20">
+        <div class="flex items-center space-x-4">
+            <span class="font-bold text-xl tracking-tight"><i class="fa-brands fa-python mr-2"></i>PyScratch 2.0</span>
+            <div class="h-6 w-px bg-indigo-400"></div>
+            <button onclick="saveProject()" class="hover:bg-indigo-500 px-2 py-1 rounded transition"><i class="fa-solid fa-save mr-1"></i> Save</button>
+            <button onclick="document.getElementById('loadInput').click()" class="hover:bg-indigo-500 px-2 py-1 rounded transition"><i class="fa-solid fa-folder-open mr-1"></i> Load</button>
+            <input type="file" id="loadInput" class="hidden" accept=".ps2" onchange="loadProject(this)">
+            <button onclick="publishProject()" class="hover:bg-indigo-500 px-2 py-1 rounded transition"><i class="fa-solid fa-share-from-square mr-1"></i> Publish</button>
+            <button onclick="showHelp()" class="hover:bg-indigo-500 px-2 py-1 rounded transition"><i class="fa-solid fa-circle-question mr-1"></i> Help</button>
+        </div>
+        
+        <div class="flex items-center space-x-4">
+            <input type="color" id="globalColorPicker" class="w-8 h-8 rounded cursor-pointer border-none bg-transparent">
+            <div class="h-6 w-px bg-indigo-400"></div>
+            <button onclick="startAll()" class="text-green-400 hover:text-green-300 text-2xl transition transform hover:scale-110"><i class="fa-solid fa-flag"></i></button>
+            <button onclick="stopAll()" class="text-red-400 hover:text-red-300 text-2xl transition transform hover:scale-110"><i class="fa-solid fa-stop-circle"></i></button>
+        </div>
+    </div>
+
+    <!-- Main Workspace -->
+    <div class="flex flex-1 overflow-hidden">
+        
+        <!-- Left Panel: Code & Costumes -->
+        <div class="w-1/2 flex flex-col border-r border-gray-300 bg-gray-100">
+            <!-- Tabs -->
+            <div class="flex bg-gray-200 border-b border-gray-300">
+                <button onclick="switchTab('code')" id="tab-btn-code" class="flex-1 py-2 font-medium text-gray-700 bg-white border-b-2 border-indigo-500 focus:outline-none">Code</button>
+                <button onclick="switchTab('costumes')" id="tab-btn-costumes" class="flex-1 py-2 font-medium text-gray-600 hover:bg-gray-50 focus:outline-none">Costumes</button>
+            </div>
+
+            <!-- Content Area -->
+            <div class="flex-1 relative overflow-hidden">
+                
+                <!-- CODE TAB -->
+                <div id="tab-code" class="absolute inset-0 flex flex-row">
+                    <!-- Threads Sidebar (Hideable) -->
+                    <div id="thread-sidebar" class="w-48 bg-gray-50 border-r border-gray-300 flex flex-col transition-all duration-300 overflow-hidden">
+                        <div class="p-2 bg-gray-200 text-xs font-bold text-gray-500 uppercase flex justify-between items-center whitespace-nowrap">
+                            <span>Threads</span>
+                            <div class="flex gap-2">
+                                <button onclick="addThread()" class="text-indigo-600 hover:text-indigo-800" title="Add Thread"><i class="fa-solid fa-plus"></i></button>
+                                <button onclick="toggleThreads()" class="text-gray-500 hover:text-gray-700" title="Hide Sidebar"><i class="fa-solid fa-chevron-left"></i></button>
+                            </div>
+                        </div>
+                        <div id="thread-list" class="flex-1 overflow-y-auto p-2 space-y-2">
+                            <!-- Thread items generated here -->
+                        </div>
+                    </div>
+                    
+                    <!-- Code Editor -->
+                    <div class="flex-1 flex flex-col relative" id="editor-container">
+                        <!-- Show Threads Button (Hidden by default) -->
+                        <button id="show-threads-btn" onclick="toggleThreads()" class="hidden absolute bottom-4 left-4 z-10 bg-white border border-gray-300 rounded shadow-sm px-2 py-1 text-xs text-gray-600 hover:text-indigo-600 hover:bg-gray-50 transition-colors opacity-80 hover:opacity-100">
+                            <i class="fa-solid fa-list mr-1"></i> Threads
+                        </button>
+
+                        <textarea id="code-editor" class="code-editor w-full h-full p-4 resize-none bg-white text-gray-800 focus:outline-none" 
+                            spellcheck="false" placeholder="# Write your Python code here..."></textarea>
+                        
+                        <!-- Autocomplete Popup moved to body end -->
+                        <!-- Hidden Div for Caret Measurement -->
+                        <div id="caret-measure" class="code-editor absolute top-0 left-0 visibility-hidden whitespace-pre-wrap break-words pointer-events-none p-4" style="visibility: hidden; z-index: -1;"></div>
+                    </div>
+                </div>
+
+                <!-- COSTUMES TAB -->
+                <div id="tab-costumes" class="absolute inset-0 hidden flex flex-col bg-white p-4">
+                    <div id="costume-list" class="flex-1 overflow-y-auto grid grid-cols-3 gap-4 content-start">
+                        <!-- Costumes generated here -->
+                    </div>
+                    <div class="mt-4 pt-4 border-t border-gray-200 flex justify-center">
+                         <div class="relative group">
+                            <!-- Updated: Changed to simple button that opens modal -->
+                            <button onclick="openLibraryForAdd()" class="bg-indigo-600 text-white px-4 py-2 rounded shadow hover:bg-indigo-700 flex items-center">
+                                <i class="fa-solid fa-plus mr-2"></i> Add Costume
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Stage & Sprites -->
+        <div class="w-1/2 flex flex-col bg-gray-200">
+            
+            <!-- Stage View -->
+            <div class="flex-1 p-4 flex flex-col relative">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="font-bold text-gray-600"><i class="fa-solid fa-gamepad mr-2"></i>Stage</h2>
+                    <button onclick="toggleFullscreen()" class="text-gray-500 hover:text-gray-800"><i class="fa-solid fa-expand"></i></button>
+                </div>
+                
+                <div id="game-container" class="relative w-full aspect-[4/3] bg-black border-4 border-gray-800 rounded-lg shadow-lg overflow-hidden mx-auto">
+                    <!-- The Canvas -->
+                    <canvas id="game-canvas" width="480" height="360" class="w-full h-full block object-contain"></canvas>
+                    <!-- Variable Overlay -->
+                    <div id="variable-overlay" class="absolute inset-0 p-2 flex flex-col items-start gap-2"></div>
+                    <!-- Ask Input Overlay -->
+                    <div id="ask-overlay" class="hidden absolute bottom-4 left-4 right-4 bg-white p-2 rounded shadow-lg border border-indigo-200 flex flex-col gap-1 animate-fade-in-up">
+                        <span id="ask-prompt" class="text-sm font-bold text-indigo-600">Sprite asks...</span>
+                        <div class="flex">
+                            <input type="text" id="ask-input" class="flex-1 border border-gray-300 rounded-l px-2 py-1 focus:outline-none focus:border-indigo-500">
+                            <button id="ask-submit" class="bg-indigo-600 text-white px-4 rounded-r"><i class="fa-solid fa-check"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sprite Properties & List -->
+            <div class="h-64 bg-white border-t border-gray-300 flex flex-col">
+                
+                <!-- Properties Bar -->
+                <!-- Compacted spacing and widths to ensure fit -->
+                <div class="h-16 border-b border-gray-200 flex items-center px-2 space-x-2 text-sm bg-gray-50 relative z-20">
+                    <div class="flex flex-col shrink-0">
+                        <label class="text-xs font-bold text-gray-500">Sprite</label>
+                        <input type="text" id="prop-name" class="border rounded px-1 w-20 text-xs py-1" onchange="updateSpriteProp('name', this.value)">
+                    </div>
+                    <div class="flex space-x-1 shrink-0">
+                        <div class="flex flex-col w-14">
+                            <label class="text-xs font-bold text-gray-500">X</label>
+                            <input type="number" id="prop-x" class="border rounded px-1 text-xs py-1" onchange="updateSpriteProp('x', this.value)">
+                        </div>
+                        <div class="flex flex-col w-14">
+                            <label class="text-xs font-bold text-gray-500">Y</label>
+                            <input type="number" id="prop-y" class="border rounded px-1 text-xs py-1" onchange="updateSpriteProp('y', this.value)">
+                        </div>
+                    </div>
+                    <div class="flex flex-col w-14 shrink-0">
+                        <label class="text-xs font-bold text-gray-500">Size</label>
+                        <input type="number" id="prop-size" class="border rounded px-1 text-xs py-1" onchange="updateSpriteProp('size', this.value)">
+                    </div>
+                    
+                    <!-- Direction Control -->
+                    <div class="relative group shrink-0">
+                        <div class="flex flex-col w-14 cursor-pointer">
+                            <label class="text-xs font-bold text-gray-500">Direction</label>
+                            <input type="number" id="prop-dir" class="border rounded px-1 cursor-pointer text-xs py-1" readonly>
+                        </div>
+                        <!-- Popup Angle Picker -->
+                        <div class="hidden group-hover:block absolute bottom-full left-1/2 -translate-x-1/2 pb-2 z-50">
+                            <div class="w-32 h-32 bg-white rounded-full shadow-xl border-4 border-gray-200 angle-circle relative" id="angle-picker">
+                                <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                    <div class="w-1 h-1 bg-black rounded-full"></div>
+                                </div>
+                                <div id="angle-picker-line" class="absolute top-1/2 left-1/2 w-1/2 h-1 bg-indigo-600 origin-left angle-line" style="transform: rotate(-90deg);"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Rotation Style -->
+                    <div class="flex flex-col shrink-0">
+                         <label class="text-xs font-bold text-gray-500">Rotation</label>
+                         <select id="prop-rot-style" class="border rounded text-xs py-1 w-24" onchange="updateSpriteProp('rotationStyle', this.value)">
+                             <option value="all">All Around</option>
+                             <option value="left-right">Left/Right</option>
+                             <option value="none">Don't Rotate</option>
+                         </select>
+                    </div>
+                </div>
+
+                <!-- Sprite List -->
+                <div class="flex-1 overflow-x-auto p-4 flex space-x-4 bg-white" id="sprite-list">
+                    <!-- Sprites added here via JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="help-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg shadow-xl w-3/4 h-3/4 flex flex-col overflow-hidden">
+            <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                <h3 class="text-xl font-bold text-gray-800"><i class="fa-solid fa-book mr-2"></i>Documentation</h3>
+                <button onclick="document.getElementById('help-modal').classList.add('hidden')" class="text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-6 space-y-8 bg-gray-50">
+                <!-- Help Content (Same as before) -->
+                <!-- Movement -->
+                <div class="bg-white rounded-lg shadow border-l-4 border-blue-500 overflow-hidden">
+                    <div class="bg-blue-100 p-2 font-bold text-blue-900">Movement</div>
+                    <div class="p-4 space-y-4 text-sm text-gray-700">
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">move_steps(steps)</code>
+                            <p>Moves the sprite forward by the specified number of pixels in its current direction.</p>
+                        </div>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">turn(degrees)</code>
+                            <p>Rotates the sprite clockwise by the specified degrees.</p>
+                        </div>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">go_to(x, y)</code> or <code class="bg-gray-100 px-1 rounded font-bold">go_to("random")</code>
+                            <p>Teleports the sprite to specific coordinates or a random position.</p>
+                        </div>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">glide_to(x, y, seconds)</code>
+                            <p>Glides the sprite to coordinates or "random" over the specified time.</p>
+                        </div>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">point_towards(target)</code>
+                            <p>Points the sprite. Target can be a number (degree), a sprite name ("Sprite1"), "mouse_pointer", or use <code>point_towards(x, y)</code>.</p>
+                        </div>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">set_x(val)</code> / <code class="bg-gray-100 px-1 rounded font-bold">set_y(val)</code>
+                            <p>Sets the sprite's X or Y position directly.</p>
+                        </div>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">on_edge()</code> & <code class="bg-gray-100 px-1 rounded font-bold">bounce()</code>
+                            <p>Checks if touching screen edge, and bounces (reflects direction) if true.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Looks -->
+                <div class="bg-white rounded-lg shadow border-l-4 border-purple-500 overflow-hidden">
+                    <div class="bg-purple-100 p-2 font-bold text-purple-900">Looks</div>
+                    <div class="p-4 space-y-4 text-sm text-gray-700">
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">say(message, seconds)</code>
+                            <p>Displays a speech bubble. Pauses execution for <code>seconds</code> (default 2).</p>
+                        </div>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">next_costume()</code> / <code class="bg-gray-100 px-1 rounded font-bold">set_costume(name)</code>
+                            <p>Cycles to the next costume or sets a specific costume by name.</p>
+                        </div>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">next_stage()</code> / <code class="bg-gray-100 px-1 rounded font-bold">set_stage(name)</code>
+                            <p>Changes the background backdrop.</p>
+                        </div>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">set_size(percent)</code>
+                            <p>Sets sprite size (100 is default).</p>
+                        </div>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">show()</code> / <code class="bg-gray-100 px-1 rounded font-bold">hide()</code>
+                            <p>Shows or hides the sprite.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Events -->
+                <div class="bg-white rounded-lg shadow border-l-4 border-yellow-500 overflow-hidden">
+                    <div class="bg-yellow-100 p-2 font-bold text-yellow-900">Events</div>
+                    <div class="p-4 space-y-4 text-sm text-gray-700">
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">def game_start():</code>
+                            <p>Main entry point. triggered when Green Flag is clicked.</p>
+                        </div>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">def on_click():</code>
+                            <p>Triggered when this sprite is clicked.</p>
+                        </div>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">def on_keypress(key):</code>
+                            <p>Triggered when a key is pressed. <code>key</code> is the key name ("space", "a", "up").</p>
+                        </div>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">broadcast(message)</code>
+                            <p>Broadcasts a message to all sprites (Listeners not yet implemented in UI).</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Control -->
+                <div class="bg-white rounded-lg shadow border-l-4 border-amber-500 overflow-hidden">
+                    <div class="bg-amber-100 p-2 font-bold text-amber-900">Control</div>
+                    <div class="p-4 space-y-4 text-sm text-gray-700">
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">wait(seconds)</code>
+                            <p>Pauses the current thread for the specified time.</p>
+                        </div>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">while True:</code>
+                            <p>Creates an infinite loop (runs 60 times per second).</p>
+                        </div>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">if condition:</code>
+                            <p>Standard Python conditional logic.</p>
+                        </div>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">stop()</code>
+                            <p>Stops the entire game immediately.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sensing -->
+                <div class="bg-white rounded-lg shadow border-l-4 border-cyan-500 overflow-hidden">
+                    <div class="bg-cyan-100 p-2 font-bold text-cyan-900">Sensing</div>
+                    <div class="p-4 space-y-4 text-sm text-gray-700">
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">touching(target)</code>
+                            <p>Returns True if touching "mouse_pointer" or a sprite name.</p>
+                        </div>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">distance_to(target)</code>
+                            <p>Returns distance in pixels to "mouse_pointer" or a sprite.</p>
+                        </div>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">key_pressed(key)</code>
+                            <p>Returns True if the specified key is currently held down.</p>
+                        </div>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">ask(question)</code>
+                            <p>Prompts the user for input and returns the result (pauses thread).</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Variables -->
+                <div class="bg-white rounded-lg shadow border-l-4 border-orange-500 overflow-hidden">
+                    <div class="bg-orange-100 p-2 font-bold text-orange-900">Variables</div>
+                    <div class="p-4 space-y-4 text-sm text-gray-700">
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">display_variable(name, value)</code>
+                            <p>Shows a variable monitor on the stage. <code>name</code> is the label, <code>value</code> is the data.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Random -->
+                <div class="bg-white rounded-lg shadow border-l-4 border-green-500 overflow-hidden">
+                    <div class="bg-green-100 p-2 font-bold text-green-900">Random</div>
+                    <div class="p-4 space-y-4 text-sm text-gray-700">
+                        <p class="text-xs text-gray-500 italic mb-2">Requires <code>import random</code> at top of script.</p>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">random.random()</code>
+                            <p>Returns a random float between 0.0 and 1.0.</p>
+                        </div>
+                        <div>
+                            <code class="bg-gray-100 px-1 rounded font-bold">random.randint(a, b)</code>
+                            <p>Returns a random integer between a and b (inclusive).</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Confirmation Modal -->
+    <div id="confirm-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white p-6 rounded-lg shadow-xl text-center w-80">
+            <h3 class="text-lg font-bold text-gray-800 mb-2">Confirm Action</h3>
+            <p id="confirm-msg" class="mb-6 text-gray-600">Are you sure?</p>
+            <div class="flex justify-center space-x-4">
+                <button id="confirm-yes" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 focus:outline-none transition-colors">Yes, Delete</button>
+                <button id="confirm-no" class="bg-gray-300 text-gray-800 px-4 py-2 rounded hover:bg-gray-400 focus:outline-none transition-colors">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Prompt Modal -->
+    <div id="prompt-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white p-6 rounded-lg shadow-xl text-center w-80">
+            <h3 class="text-lg font-bold text-gray-800 mb-2">Rename</h3>
+            <p id="prompt-msg" class="mb-2 text-gray-600">Enter new name:</p>
+            <input type="text" id="prompt-input" class="border rounded w-full px-2 py-1 mb-4 focus:outline-none focus:border-indigo-500 border-gray-300 text-gray-800" />
+            <div class="flex justify-center space-x-4">
+                <button id="prompt-ok" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 focus:outline-none transition-colors">OK</button>
+                <button id="prompt-cancel" class="bg-gray-300 text-gray-800 px-4 py-2 rounded hover:bg-gray-400 focus:outline-none transition-colors">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Alert Modal -->
+    <div id="alert-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white p-6 rounded-lg shadow-xl text-center w-96 max-h-[80vh] overflow-y-auto">
+            <h3 class="text-lg font-bold text-indigo-600 mb-2">Notice</h3>
+            <div id="alert-msg" class="mb-6 text-gray-600 whitespace-pre-wrap text-left text-sm font-mono bg-gray-50 p-2 rounded border border-gray-200"></div>
+            <button onclick="document.getElementById('alert-modal').classList.add('hidden')" class="bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-700 focus:outline-none">OK</button>
+        </div>
+    </div>
+
+    <!-- Costume Library Modal -->
+    <div id="library-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg shadow-xl w-3/4 h-3/4 flex flex-col overflow-hidden">
+            <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                <h3 class="text-xl font-bold text-gray-800" id="library-title">Select Asset</h3>
+                <button onclick="document.getElementById('library-modal').classList.add('hidden')" class="text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+            </div>
+            <!-- Updated Grid: grid-cols-4 for more space, keeping gap -->
+            <div id="library-grid" class="flex-1 overflow-y-auto p-6 grid grid-cols-4 gap-4 bg-gray-50">
+                <!-- Items populated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Autocomplete Popup (Moved here to be outside overflow:hidden containers) -->
+    <div id="autocomplete-list"></div>
+
+<script>
+/**
+ * PyScratch Engine & Transpiler
+ */
+
+// --- Constants & Config ---
+const STAGE_WIDTH = 480;
+const STAGE_HEIGHT = 360;
+const FPS = 60;
+const FRAME_TIME = 1000 / FPS;
+
+// Autocomplete Dictionary
+// Offset: How many characters back to move the cursor after insertion
+const API_KEYWORDS = [
+    { word: "move_steps", insert: "move_steps()", signature: "move_steps(steps)", type: "mov", offset: 1 },
+    { word: "turn", insert: "turn()", signature: "turn(degrees)", type: "mov", offset: 1 },
+    { word: "go_to", insert: "go_to()", signature: "go_to(x, y)", type: "mov", offset: 1 }, // Signature updated dynamically
+    { word: "glide_to", insert: "glide_to()", signature: "glide_to(x, y, secs)", type: "mov", offset: 1 },
+    { word: "point_towards", insert: "point_towards()", signature: "point_towards(target)", type: "mov", offset: 1 },
+    { word: "change_x", insert: "change_x()", signature: "change_x(dx)", type: "mov", offset: 1 },
+    { word: "change_y", insert: "change_y()", signature: "change_y(dy)", type: "mov", offset: 1 },
+    { word: "set_x", insert: "set_x()", signature: "set_x(x)", type: "mov", offset: 1 },
+    { word: "set_y", insert: "set_y()", signature: "set_y(y)", type: "mov", offset: 1 },
+    { word: "get_x", insert: "get_x()", signature: "get_x()", type: "mov", offset: 0 },
+    { word: "get_y", insert: "get_y()", signature: "get_y()", type: "mov", offset: 0 },
+    { word: "get_direction", insert: "get_direction()", signature: "get_direction()", type: "mov", offset: 0 },
+    { word: "on_edge", insert: "on_edge()", signature: "on_edge()", type: "mov", offset: 0 },
+    { word: "bounce", insert: "bounce()", signature: "bounce()", type: "mov", offset: 0 },
+    
+    { word: "say", insert: "say()", signature: "say(msg, secs)", type: "look", offset: 1 },
+    { word: "set_costume", insert: "set_costume()", signature: "set_costume(name)", type: "look", offset: 1 },
+    { word: "next_costume", insert: "next_costume()", signature: "next_costume()", type: "look", offset: 0 },
+    { word: "set_stage", insert: "set_stage()", signature: "set_stage(name)", type: "look", offset: 1 },
+    { word: "next_stage", insert: "next_stage()", signature: "next_stage()", type: "look", offset: 0 },
+    { word: "set_size", insert: "set_size()", signature: "set_size(%)", type: "look", offset: 1 },
+    { word: "change_size", insert: "change_size()", signature: "change_size(amount)", type: "look", offset: 1 },
+    { word: "show", insert: "show()", signature: "show()", type: "look", offset: 0 },
+    { word: "hide", insert: "hide()", signature: "hide()", type: "look", offset: 0 },
+
+    { word: "game_start", insert: "def game_start():\n\t", signature: "def game_start():", type: "evt", offset: 0 },
+    { word: "on_click", insert: "def on_click():\n\t", signature: "def on_click():", type: "evt", offset: 0 },
+    { word: "on_keypress", insert: "def on_keypress(key):\n\t", signature: "def on_keypress(key):", type: "evt", offset: 0 },
+    { word: "broadcast", insert: "broadcast()", signature: "broadcast(msg)", type: "evt", offset: 1 },
+
+    { word: "wait", insert: "wait()", signature: "wait(secs)", type: "ctrl", offset: 1 },
+    { word: "stop", insert: "stop()", signature: "stop()", type: "ctrl", offset: 0 },
+    { word: "if", insert: "if :", signature: "if condition:", type: "ctrl", offset: 1 },
+    { word: "while", insert: "while :", signature: "while condition:", type: "ctrl", offset: 1 },
+    { word: "for", insert: "for i in range():", signature: "for i in range(n):", type: "ctrl", offset: 2 },
+    { word: "pass", insert: "pass", signature: "pass", type: "ctrl", offset: 0 },
+
+    { word: "touching", insert: "touching()", signature: "touching(sprite)", type: "sens", offset: 1 },
+    { word: "distance_to", insert: "distance_to()", signature: "distance_to(sprite)", type: "sens", offset: 1 },
+    { word: "key_pressed", insert: "key_pressed()", signature: "key_pressed(key)", type: "sens", offset: 1 },
+    { word: "ask", insert: "ask()", signature: "ask(question)", type: "sens", offset: 1 },
+
+    { word: "display_variable", insert: "display_variable()", signature: "display_variable(name, val)", type: "var", offset: 1 },
+    { word: "random.random", insert: "random.random()", signature: "random.random()", type: "rand", offset: 0 },
+    { word: "random.randint", insert: "random.randint()", signature: "random.randint(a, b)", type: "rand", offset: 1 },
+];
+
+// Explicit Signature Database for Parameter Hints
+const FUNCTION_SIGNATURES = {
+    "move_steps": [{ args: ["steps"] }],
+    "turn": [{ args: ["degrees"] }],
+    "go_to": [
+        { args: ["x", "y"] },
+        { args: ["\"random\""] }
+    ],
+    "glide_to": [
+        { args: ["x", "y", "secs"] },
+        { args: ["\"random\"", "secs"] }
+    ],
+    "point_towards": [
+        { args: ["x", "y"] },
+        { args: ["target_sprite"] },
+        { args: ["\"mouse pointer\""] },
+        { args: ["degrees"] }
+    ],
+    "say": [{ args: ["message", "seconds"] }],
+    "set_costume": [{ args: ["costume_name"] }],
+    "set_stage": [{ args: ["backdrop_name"] }],
+    "set_size": [{ args: ["percentage"] }],
+    "change_size": [{ args: ["amount"] }],
+    "wait": [{ args: ["seconds"] }],
+    "touching": [
+        { args: ["sprite_name"] },
+        { args: ["\"mouse pointer\""] }
+    ],
+    "distance_to": [
+        { args: ["sprite_name"] },
+        { args: ["\"mouse pointer\""] }
+    ],
+    "ask": [{ args: ["question"] }],
+    "display_variable": [{ args: ["name", "value"] }],
+    "random.randint": [{ args: ["min", "max"] }],
+    "set_x": [{ args: ["x"] }],
+    "set_y": [{ args: ["y"] }],
+    "change_x": [{ args: ["dx"] }],
+    "change_y": [{ args: ["dy"] }]
+};
+
+// Collision Context (Off-screen)
+const collisionCanvas = document.createElement('canvas');
+collisionCanvas.width = STAGE_WIDTH;
+collisionCanvas.height = STAGE_HEIGHT;
+// Optimize for frequent readback (getImageData)
+const collisionCtx = collisionCanvas.getContext('2d', { willReadFrequently: true }); 
+
+const URLS = {
+    SPRITE_LIB: 'https://raw.githubusercontent.com/jquinney-hue/pyscratchurls.github.io/refs/heads/main/costumeurls.txt',
+    STAGE_LIB: 'https://raw.githubusercontent.com/jquinney-hue/pyscratchurls.github.io/refs/heads/main/backdropurls.txt',
+    DEFAULT_SPRITE: 'https://cdn.assets.scratch.mit.edu/internalapi/asset/bcf454acf82e4504149f7ffe07081dbc.svg/get/',
+    DEFAULT_STAGE: 'https://cdn.assets.scratch.mit.edu/internalapi/asset/8eb8790be5507fdccf73e7c1570bbbab.svg/get/'
+};
+
+// Initial regex-based transpilation rules (Base Python -> JS)
+// These will be augmented by fetching YAML
+let TRANSPILER_RULES = [
+    // 0. Imports (Handle Python imports by commenting them out in JS, as functionality is in API)
+    { name: "import_random", regex: /^\s*import\s+random\s*$/gm, replace: "// import random (loaded via API)" },
+
+    // 1. Variable Assignment Hooks
+    { name: "var_assign", regex: /^(\s*)(?!def|if|while|for|return|elif|else)([a-zA-Z_]\w*)\s*=\s*([^=].*)$/gm, replace: '$1$2 = $3; api.set_var_update("$2", $2);' },
+    { name: "var_op_assign", regex: /^(\s*)(?!def|if|while|for|return|elif|else)([a-zA-Z_]\w*)\s*(\+|-|\*|\/|%)=\s*(.*)$/gm, replace: '$1$2 $3= $4; api.set_var_update("$2", $2);' },
+
+    // 2. Inject await for blocking functions
+    { name: "await_calls", regex: /(?<!def\s)\b(wait|say|glide_to|ask)\s*\(/g, replace: "await $1(" },
+    
+    // 3. Standard Python Syntax (Updated for Robustness)
+    { name: "print", regex: /print\((.*)\)/g, replace: "console.log($1)" },
+    { name: "True", regex: /\bTrue\b/g, replace: "true" },
+    { name: "False", regex: /\bFalse\b/g, replace: "false" },
+    { name: "self", regex: /\bself\b/g, replace: "this" },
+    
+    // Structure Rules (Anchored ^ to match start of line, Optional Colon :?)
+    { name: "def", regex: /^def\s+(\w+)\s*\((.*?)\)\s*:?\s*$/g, replace: "async function $1($2) {" },
+    { name: "if", regex: /^if\s+(.+?):?\s*$/g, replace: "if ($1) {" },
+    { name: "elif", regex: /^elif\s+(.+?):?\s*$/g, replace: "else if ($1) {" },
+    { name: "else", regex: /^else:?\s*$/g, replace: "else {" },
+    
+    // 4. Loops (Updated for Robustness)
+    { name: "while", regex: /^while\s+(.+?):?\s*$/g, replace: "while ((await _tick()) || ($1)) {" }, 
+    { name: "for_range", regex: /^for\s+(\w+)\s+in\s+range\(([^,]+)\):?\s*$/g, replace: "for (let $1 = 0; (await _tick()) || $1 < $2; $1++) {" },
+    { name: "for_range_2", regex: /^for\s+(\w+)\s+in\s+range\(([^,]+),\s*([^)]+)\):?\s*$/g, replace: "for (let $1 = $2; (await _tick()) || $1 < $3; $1++) {" },
+];
+
+// --- Global State ---
+let sprites = [];
+let stage = null; // Special sprite
+let currentSelection = null; // ID of selected sprite (or 'stage')
+let isRunning = false;
+let pressedKeys = {};
+let mouse = { x: 0, y: 0, down: false };
+let displayedVariables = {}; // { name: val } (For UI rendering)
+
+// Variable Watcher System
+window.globalVarCache = {}; // Stores latest value of ANY variable assigned via code
+window.watchedVarNames = new Set(); // Stores names of variables explicitly turned ON
+
+// --- Initialization ---
+window.onload = async () => {
+    initCanvas();
+    setupInputs();
+    
+    // Load external configs
+    await loadExtensions();
+    await loadCostumeLibraries();
+
+    // Create Stage
+    stage = new Sprite("Stage", true);
+    stage.costumes = [{ name: "Backdrop1", url: URLS.DEFAULT_STAGE }];
+    
+    // Create Default Sprite
+    const defSprite = new Sprite("Sprite1");
+    sprites.push(defSprite);
+
+    selectSprite(defSprite.id);
+    renderSpriteList();
+    renderLoop();
+};
+
+async function loadExtensions() {
+    // Placeholder for YAML loading
+}
+
+async function loadCostumeLibraries() {
+    try {
+        const fetchLib = async (url) => {
+            const r = await fetch(url);
+            const text = await r.text();
+            return text.split('\n').filter(line => line.trim().length > 0).map(line => line.trim() + '/get/');
+        };
+        
+        window.spriteLibUrls = await fetchLib(URLS.SPRITE_LIB);
+        window.stageLibUrls = await fetchLib(URLS.STAGE_LIB);
+        updateLibraryUI();
+    } catch (e) {
+        console.warn("Failed to load external libraries. Using defaults.", e);
+        window.spriteLibUrls = [URLS.DEFAULT_SPRITE];
+        window.stageLibUrls = [URLS.DEFAULT_STAGE];
+    }
+}
+
+// --- The Sprite Class ---
+class Sprite {
+    constructor(name, isStage = false) {
+        this.id = isStage ? 'stage' : 's_' + Date.now() + Math.random();
+        this.name = name;
+        this.isStage = isStage;
+        this.x = 0;
+        this.y = 0;
+        this.direction = 90; // Scratch degrees: 0=Up, 90=Right
+        this.size = 100;
+        this.visible = true;
+        this.rotationStyle = 'all'; // all, left-right, none
+        
+        this.costumes = isStage ? [] : [{ name: "Costume1", url: URLS.DEFAULT_SPRITE }];
+        this.currentCostumeIdx = 0;
+        
+        // Threads: { id: string, name: string, code: string, running: boolean, ctx: object }
+        this.threads = [{ id: 't1', name: 'Main', code: isStage ? "# Stage Code" : "def game_start():\n    pass" }];
+        
+        // Runtime properties
+        this.speechBubble = { text: null, timer: 0 };
+        this.imgCache = {}; // URL -> Image Object
+        this.askResolve = null; // Promise resolve for ask()
+    }
+
+    get currentCostume() {
+        return this.costumes[this.currentCostumeIdx];
+    }
+
+    async loadImage(url) {
+        if (this.imgCache[url]) return this.imgCache[url];
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = "Anonymous";
+            img.onload = () => { this.imgCache[url] = img; resolve(img); };
+            img.onerror = () => { resolve(null); }; // Fail silently
+            img.src = url;
+        });
+    }
+}
+
+// --- Transpiler & Execution Engine ---
+
+function transpile(pythonCode) {
+    let lines = pythonCode.split('\n');
+    let jsCode = "";
+    let indentStack = [0];
+
+    lines.forEach(line => {
+        // 1. Calculate Indentation
+        const trimLeft = line.trimStart();
+        if (trimLeft.length === 0 || trimLeft.startsWith('#')) return; // Skip empty/comments
+        
+        const indent = line.length - trimLeft.length;
+        const currentIndent = indentStack[indentStack.length - 1];
+
+        // Apply Regex Replacements (YAML Rules) FIRST
+        let processedLine = trimLeft;
+        TRANSPILER_RULES.forEach(rule => {
+            processedLine = processedLine.replace(rule.regex, rule.replace);
+        });
+
+        // Indentation Logic
+        if (indent > currentIndent) {
+            if (!jsCode.trim().endsWith('{')) {
+                jsCode += "{\n";
+            }
+            indentStack.push(indent);
+        } else {
+            while (indent < indentStack[indentStack.length - 1]) {
+                jsCode += "}\n";
+                indentStack.pop();
+            }
+        }
+
+        // Handle Colon at end of line
+        if (processedLine.endsWith(':')) {
+            processedLine = processedLine.slice(0, -1);
+        }
+
+        jsCode += processedLine + "\n";
+    });
+
+    // Close remaining blocks
+    while (indentStack.length > 1) {
+        jsCode += "}\n";
+        indentStack.pop();
+    }
+
+    // Wrap in IIFE to capture 'this' correctly
+    return jsCode;
+}
+
+// The magical "tick" that allows concurrency and 60FPS limits
+const _tick = () => new Promise(r => setTimeout(r, 0)); // Using 0ms lets browser schedule, but we limit logic update in main loop
+
+// Grab the constructor for AsyncFunctions
+const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+
+async function runThread(sprite, threadObj) {
+    if (threadObj.running) return; // Already running
+    threadObj.running = true;
+
+    // Build the execution context (The "API")
+    const api = createRuntimeAPI(sprite);
+    
+    // Transpile
+    const jsBody = transpile(threadObj.code);
+    
+    // Combine API + Code
+    // We register listeners BEFORE starting the loop to ensure they are bound even if game_start loops infinitely.
+    const functionCode = `
+        const { move_steps, turn, go_to, glide_to, point_towards, change_x, change_y, set_x, set_y, get_x, get_y, get_direction, on_edge, bounce, say, set_costume, next_costume, set_stage, next_stage, set_size, change_size, show, hide, wait, pass, stop, touching, touching_color, distance_to, ask, key_pressed, display_variable, broadcast, random } = api;
+        
+        const _tick = async () => {
+             // Basic throttle for infinite loops
+             await new Promise(r => setTimeout(r, 1000/60)); 
+             if (!window.isRunning) throw new Error("Stopped");
+             return false; // For loop condition check
+        };
+
+        try {
+            ${jsBody}
+            
+            // We attach event listeners dynamically (Array push strategy to support multiple threads)
+            if (!sprite._listeners) sprite._listeners = {};
+            
+            // Initialize arrays if not present
+            if (!sprite._listeners.onClick) sprite._listeners.onClick = [];
+            if (!sprite._listeners.onKey) sprite._listeners.onKey = [];
+            if (!sprite._listeners.onMessage) sprite._listeners.onMessage = [];
+
+            // Push functions if defined in this thread
+            if (typeof on_click === 'function') sprite._listeners.onClick.push(on_click);
+            if (typeof on_keypress === 'function') sprite._listeners.onKey.push(on_keypress);
+            if (typeof broadcast_receive === 'function') sprite._listeners.onMessage.push(broadcast_receive);
+
+            // Auto-start events if they exist
+            if (typeof game_start === 'function' && window._triggerStart) { await game_start(); }
+
+        } catch (e) {
+            if (e.message !== "Stopped") console.error("Runtime Error in " + sprite.name, e);
+        }
+    `;
+
+    try {
+        const asyncFunc = new AsyncFunction('api', 'sprite', 'window', functionCode);
+        await asyncFunc(api, sprite, window);
+    } catch (e) {
+        console.error("Compilation Error", e);
+    }
+    
+    threadObj.running = false;
+}
+
+// --- Runtime API Factory ---
+function createRuntimeAPI(sprite) {
+    // Helper: Degrees to Radians (Scratch style: 0 is Up, 90 is Right)
+    // Formula: (90 - degrees) converts Scratch Angle to Standard Math Angle
+    const d2r = (d) => (90 - d) * (Math.PI / 180);
+
+    return {
+        move_steps: (steps) => {
+            const rad = d2r(sprite.direction);
+            sprite.x += steps * Math.cos(rad);
+            sprite.y += steps * Math.sin(rad);
+        },
+        turn: (deg) => { sprite.direction += deg; },
+        go_to: (x, y) => {
+            if (x === "random") {
+                sprite.x = (Math.random() * STAGE_WIDTH) - (STAGE_WIDTH/2);
+                sprite.y = (Math.random() * STAGE_HEIGHT) - (STAGE_HEIGHT/2);
+            } else {
+                sprite.x = x; sprite.y = y;
+            }
+        },
+        glide_to: async (x, y, secs) => {
+            let targetX = x, targetY = y;
+            let durationSecs = secs;
+
+            // Handle glide_to("random", seconds)
+            if (x === "random") {
+                 targetX = (Math.random() * STAGE_WIDTH) - (STAGE_WIDTH/2);
+                 targetY = (Math.random() * STAGE_HEIGHT) - (STAGE_HEIGHT/2);
+                 // In this case, the second argument (y) is actually seconds
+                 durationSecs = y; 
+            }
+            
+            // Default to 1 second if time is invalid or undefined
+            if (typeof durationSecs !== 'number') durationSecs = 1;
+
+            const startX = sprite.x, startY = sprite.y;
+            const startTime = Date.now();
+            const duration = durationSecs * 1000;
+            
+            while (Date.now() - startTime < duration) {
+                if (!window.isRunning) throw new Error("Stopped");
+                
+                const progress = (Date.now() - startTime) / duration;
+                sprite.x = startX + (targetX - startX) * progress;
+                sprite.y = startY + (targetY - startY) * progress;
+                
+                // Manually wait for next frame (approx 60fps) since _tick is not available here
+                await new Promise(r => setTimeout(r, 1000/60));
+            }
+            // Ensure we snap to exact target at end
+            if (window.isRunning) {
+                sprite.x = targetX; 
+                sprite.y = targetY;
+            }
+        },
+        point_towards: (a, b) => {
+            let tx = 0, ty = 0;
+            
+            // 1. point_towards(deg) - Direct Set
+            if (typeof a === "number" && b === undefined) {
+                sprite.direction = a;
+                return;
+            }
+
+            // 2. point_towards(x, y) - Coords
+            if (typeof a === "number" && typeof b === "number") {
+                tx = a;
+                ty = b;
+            } 
+            // 3. point_towards("mouse_pointer") or "mouse pointer"
+            else if (a === "mouse_pointer" || a === "mouse pointer") {
+                tx = mouse.x; 
+                ty = mouse.y;
+            } 
+            // 4. point_towards("Sprite Name")
+            else {
+                const s = sprites.find(s => s.name === a);
+                if (s) { 
+                    tx = s.x; 
+                    ty = s.y; 
+                } else {
+                    return; // Target not found
+                }
+            }
+
+            // Calculate angle logic
+            const dx = tx - sprite.x;
+            const dy = ty - sprite.y;
+            
+            if (dx === 0 && dy === 0) return;
+
+            const angleRad = Math.atan2(dy, dx);
+            const angleDeg = angleRad * (180 / Math.PI);
+            
+            sprite.direction = 90 - angleDeg;
+        },
+        change_x: (v) => sprite.x += v,
+        change_y: (v) => sprite.y += v,
+        set_x: (v) => sprite.x = v,
+        set_y: (v) => sprite.y = v,
+        get_x: () => sprite.x,
+        get_y: () => sprite.y,
+        get_direction: () => sprite.direction,
+        on_edge: () => {
+            // Reset edge memory
+            sprite._hitEdges = { left: false, right: false, top: false, bottom: false };
+            
+            // 1. Broad Phase: Bounding Circle Check
+            const img = sprite.currentCostume ? sprite.imgCache[sprite.currentCostume.url] : null;
+            if (!img) return false;
+
+            const diag = Math.sqrt(img.width**2 + img.height**2) / 2;
+            const radius = diag * (sprite.size / 100);
+            const hw = STAGE_WIDTH / 2;
+            const hh = STAGE_HEIGHT / 2;
+
+            // If bounding circle is completely safe, return false early
+            if (sprite.x > -hw + radius && sprite.x < hw - radius &&
+                sprite.y > -hh + radius && sprite.y < hh - radius) {
+                return false;
+            }
+
+            // 2. Narrow Phase: Pixel Check
+            // Draw sprite to offscreen canvas
+            collisionCtx.globalCompositeOperation = 'source-over';
+            collisionCtx.clearRect(0, 0, STAGE_WIDTH, STAGE_HEIGHT);
+            drawSprite(sprite, collisionCtx);
+
+            // Helper to check a line of pixels
+            const checkRect = (x, y, w, h) => {
+                const data = collisionCtx.getImageData(x, y, w, h).data;
+                for (let i = 3; i < data.length; i += 4) {
+                    if (data[i] > 0) return true; // Alpha > 0
+                }
+                return false;
+            };
+
+            let hit = false;
+
+            // Check Canvas Borders
+            // Top Edge (Scratch Y=180, Canvas Y=0)
+            if (checkRect(0, 0, STAGE_WIDTH, 1)) { sprite._hitEdges.top = true; hit = true; }
+            
+            // Bottom Edge (Scratch Y=-180, Canvas Y=359)
+            if (checkRect(0, STAGE_HEIGHT - 1, STAGE_WIDTH, 1)) { sprite._hitEdges.bottom = true; hit = true; }
+            
+            // Left Edge (Scratch X=-240, Canvas X=0)
+            if (checkRect(0, 0, 1, STAGE_HEIGHT)) { sprite._hitEdges.left = true; hit = true; }
+            
+            // Right Edge (Scratch X=240, Canvas X=479)
+            if (checkRect(STAGE_WIDTH - 1, 0, 1, STAGE_HEIGHT)) { sprite._hitEdges.right = true; hit = true; }
+
+            // Fallback for "Off Screen" (Center went past edge)
+            if (!hit) {
+                if (sprite.x < -hw) { sprite._hitEdges.left = true; hit = true; }
+                if (sprite.x > hw) { sprite._hitEdges.right = true; hit = true; }
+                if (sprite.y < -hh) { sprite._hitEdges.bottom = true; hit = true; }
+                if (sprite.y > hh) { sprite._hitEdges.top = true; hit = true; }
+            }
+
+            return hit;
+        },
+        bounce: () => {
+            // Use precise hit data from on_edge if available
+            const edges = sprite._hitEdges || {};
+            
+            // Calculate velocity components based on Scratch Direction (0=Up)
+            // vx = sin(dir), vy = cos(dir)
+            const rad = sprite.direction * (Math.PI / 180);
+            const vx = Math.sin(rad);
+            const vy = Math.cos(rad);
+
+            // Reflect based on which wall was hit AND moving towards it
+            let bounced = false;
+
+            if (edges.left && vx < 0) { // Hit Left, moving Left
+                sprite.direction = -sprite.direction;
+                bounced = true;
+            } else if (edges.right && vx > 0) { // Hit Right, moving Right
+                sprite.direction = -sprite.direction;
+                bounced = true;
+            }
+
+            if (edges.top && vy > 0) { // Hit Top, moving Up
+                // Reflect Y: New = 180 - Old
+                sprite.direction = 180 - sprite.direction;
+                bounced = true;
+            } else if (edges.bottom && vy < 0) { // Hit Bottom, moving Down
+                sprite.direction = 180 - sprite.direction;
+                bounced = true;
+            }
+
+            // Legacy/Fallback: If on_edge wasn't called immediately before, check centers
+            if (!bounced) {
+                const hw = STAGE_WIDTH/2;
+                const hh = STAGE_HEIGHT/2;
+                if ((sprite.x < -hw && vx < 0) || (sprite.x > hw && vx > 0)) {
+                    sprite.direction = -sprite.direction;
+                }
+                if ((sprite.y < -hh && vy < 0) || (sprite.y > hh && vy > 0)) {
+                    sprite.direction = 180 - sprite.direction;
+                }
+            }
+        },
+        
+        // Looks
+        say: async (msg, secs = 2) => {
+            sprite.speechBubble = { text: msg };
+            await new Promise(r => setTimeout(r, secs * 1000));
+            sprite.speechBubble = { text: null };
+        },
+        set_costume: (name) => {
+            const idx = sprite.costumes.findIndex(c => c.name === name);
+            if (idx >= 0) {
+                sprite.currentCostumeIdx = idx;
+                updateSpriteThumbnail(sprite);
+            }
+        },
+        next_costume: () => {
+            sprite.currentCostumeIdx = (sprite.currentCostumeIdx + 1) % sprite.costumes.length;
+            updateSpriteThumbnail(sprite);
+        },
+        set_stage: (name) => {
+            const idx = stage.costumes.findIndex(c => c.name === name);
+            if (idx >= 0) stage.currentCostumeIdx = idx;
+        },
+        next_stage: () => {
+             stage.currentCostumeIdx = (stage.currentCostumeIdx + 1) % stage.costumes.length;
+        },
+        set_size: (s) => sprite.size = s,
+        change_size: (s) => sprite.size += s,
+        show: () => sprite.visible = true,
+        hide: () => sprite.visible = false,
+        
+        // Control
+        wait: async (s) => { await new Promise(r => setTimeout(r, s * 1000)); },
+        pass: () => {}, // No-op
+        stop: () => stopAll(),
+        broadcast: (msg) => {},
+
+        // Sensing
+        touching: (target) => {
+            // 1. Resolve Target
+            let tObj = null;
+            let isMouse = false;
+            
+            if (target === "mouse_pointer" || target === "mouse pointer") {
+                isMouse = true;
+                tObj = { x: mouse.x, y: mouse.y }; 
+            } else {
+                tObj = sprites.find(s => s.name === target);
+            }
+            
+            if (!tObj) return false;
+            
+            // 2. Broad Phase (Fast Distance Check)
+            // Estimate radius based on size. Using a generous circle to be safe.
+            const sImg = sprite.currentCostume ? sprite.imgCache[sprite.currentCostume.url] : null;
+            if (!sImg) return false; // Can't touch if no image loaded
+            
+            const sRadius = (Math.max(sImg.width, sImg.height) * (sprite.size/100)) * 0.7; // 0.7 is rough approx for visual bounds
+            
+            let tRadius = 0;
+            if (!isMouse) {
+                const tImg = tObj.currentCostume ? tObj.imgCache[tObj.currentCostume.url] : null;
+                if (!tImg) return false;
+                tRadius = (Math.max(tImg.width, tImg.height) * (tObj.size/100)) * 0.7;
+            } else {
+                tRadius = 2; // Tiny point for mouse
+            }
+
+            const dx = sprite.x - tObj.x;
+            const dy = sprite.y - tObj.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            
+            // If bounding circles don't overlap, return false immediately
+            if (dist > (sRadius + tRadius)) return false;
+
+            // 3. Narrow Phase (Pixel Perfect)
+            // Draw both to offscreen canvas and check intersection
+            
+            // Clear collision canvas
+            collisionCtx.globalCompositeOperation = 'source-over';
+            collisionCtx.clearRect(0, 0, STAGE_WIDTH, STAGE_HEIGHT);
+            
+            // Draw Self
+            drawSprite(sprite, collisionCtx);
+            
+            // Set composite mode to keep only overlapping non-transparent pixels
+            collisionCtx.globalCompositeOperation = 'source-in';
+            
+            if (isMouse) {
+                // For mouse, we just check if the pixel at mouse position is opaque in the source sprite
+                // Map Stage Coords to Canvas Coords
+                const mx = STAGE_WIDTH/2 + mouse.x;
+                const my = STAGE_HEIGHT/2 - mouse.y;
+                
+                // Read 1 pixel
+                const pixel = collisionCtx.getImageData(Math.floor(mx), Math.floor(my), 1, 1).data;
+                return pixel[3] > 0; // Alpha > 0
+            } else {
+                // Draw Target
+                drawSprite(tObj, collisionCtx);
+                
+                // Determine reading area (bounding box of intersection) to optimize performance
+                const minX = Math.floor(STAGE_WIDTH/2 + Math.min(sprite.x - sRadius, tObj.x - tRadius));
+                const maxX = Math.ceil(STAGE_WIDTH/2 + Math.max(sprite.x + sRadius, tObj.x + tRadius));
+                // Y is inverted in stage coords
+                const minY = Math.floor(STAGE_HEIGHT/2 - Math.max(sprite.y + sRadius, tObj.y + tRadius));
+                const maxY = Math.ceil(STAGE_HEIGHT/2 - Math.min(sprite.y - sRadius, tObj.y - tRadius));
+                
+                // Clamp to canvas
+                const cMinX = Math.max(0, minX);
+                const cMinY = Math.max(0, minY);
+                const w = Math.min(STAGE_WIDTH, maxX) - cMinX;
+                const h = Math.min(STAGE_HEIGHT, maxY) - cMinY;
+                
+                if (w <= 0 || h <= 0) return false;
+
+                // Check pixels
+                const imgData = collisionCtx.getImageData(cMinX, cMinY, w, h).data;
+                // Scan alpha channel (every 4th byte)
+                for (let i = 3; i < imgData.length; i += 4) {
+                    if (imgData[i] > 0) return true; // Found an intersection
+                }
+                
+                return false;
+            }
+        },
+        touching_color: (hex) => false,
+        distance_to: (target) => {
+            let tObj = null;
+            if (target === "mouse_pointer") tObj = { x: mouse.x, y: mouse.y };
+            else tObj = sprites.find(s => s.name === target);
+            if (!tObj) return 9999;
+            return Math.sqrt(Math.pow(sprite.x - tObj.x, 2) + Math.pow(sprite.y - tObj.y, 2));
+        },
+        ask: async (q) => {
+             const overlay = document.getElementById('ask-overlay');
+             const prompt = document.getElementById('ask-prompt');
+             const input = document.getElementById('ask-input');
+             const btn = document.getElementById('ask-submit');
+             
+             prompt.innerText = sprite.name + " asks " + q;
+             overlay.classList.remove('hidden');
+             input.value = "";
+             input.focus();
+             
+             return new Promise(resolve => {
+                 const submit = () => {
+                     overlay.classList.add('hidden');
+                     resolve(input.value);
+                     btn.removeEventListener('click', submit);
+                 };
+                 btn.addEventListener('click', submit);
+             });
+        },
+        key_pressed: (k) => !!pressedKeys[k],
+        
+        // Variables
+        display_variable: (name, show) => {
+            if (show) {
+                window.watchedVarNames.add(name);
+                // Immediately try to show current value if we have it cached
+                if (window.globalVarCache[name] !== undefined) {
+                    displayedVariables[name] = window.globalVarCache[name];
+                    updateVarDisplay();
+                }
+            } else {
+                window.watchedVarNames.delete(name);
+                delete displayedVariables[name];
+                updateVarDisplay();
+            }
+        },
+        set_var_update: (key, val) => {
+            // Update cache
+            window.globalVarCache[key] = val;
+            
+            // If this variable is being watched, update the UI
+            if (window.watchedVarNames.has(key)) {
+                displayedVariables[key] = val;
+                updateVarDisplay();
+            }
+        },
+        set_var_display: (key, val) => {
+            // Legacy/Direct helper
+            displayedVariables[key] = val;
+            updateVarDisplay();
+        },
+        
+        // Random Module
+        random: {
+            random: () => Math.random(),
+            randint: (a, b) => Math.floor(Math.random() * (b - a + 1)) + a
+        }
+    };
+}
+
+// --- Canvas & Rendering ---
+
+const canvas = document.getElementById('game-canvas');
+const ctx = canvas.getContext('2d');
+
+function initCanvas() {
+    let draggingSprite = null;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+
+    // Helper for pixel-perfect mouse detection
+    const isTouchingMouse = (s) => {
+        if (!s.visible) return false;
+        
+        // 1. Broad Phase (Bounding Circle)
+        // Calculate a safe bounding radius based on image dimensions and sprite size
+        const img = s.currentCostume ? s.imgCache[s.currentCostume.url] : null;
+        let radius;
+        
+        if (img) {
+            // Use the image diagonal to ensure rotation doesn't push pixels out of bounds
+            const diag = Math.sqrt(img.width**2 + img.height**2) / 2;
+            radius = diag * (s.size / 100); 
+        } else {
+            radius = s.size; // Fallback
+        }
+        
+        // Add a small buffer for ease of clicking small items
+        radius = Math.max(radius, 10);
+
+        const dist = Math.sqrt((mouse.x - s.x)**2 + (mouse.y - s.y)**2);
+        
+        // If outside bounding circle, return false immediately to save performance
+        if (dist > radius) return false;
+
+        // 2. Narrow Phase (Pixel Check)
+        // Clear offscreen canvas
+        collisionCtx.globalCompositeOperation = 'source-over';
+        collisionCtx.clearRect(0, 0, STAGE_WIDTH, STAGE_HEIGHT);
+        
+        // Draw the sprite in its current state (pos, rot, size)
+        drawSprite(s, collisionCtx);
+        
+        // Map mouse coordinates (Scratch center-based) to Canvas coordinates (Top-left based)
+        const mx = Math.floor(STAGE_WIDTH/2 + mouse.x);
+        const my = Math.floor(STAGE_HEIGHT/2 - mouse.y);
+        
+        // Boundary check
+        if (mx < 0 || mx >= STAGE_WIDTH || my < 0 || my >= STAGE_HEIGHT) return false;
+        
+        // Check pixel alpha
+        const pixel = collisionCtx.getImageData(mx, my, 1, 1).data;
+        return pixel[3] > 0; // Alpha > 0 means we hit a visible pixel
+    };
+
+    canvas.addEventListener('mousemove', e => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = STAGE_WIDTH / rect.width;
+        const scaleY = STAGE_HEIGHT / rect.height;
+        mouse.x = (e.clientX - rect.left) * scaleX - STAGE_WIDTH/2;
+        mouse.y = -((e.clientY - rect.top) * scaleY - STAGE_HEIGHT/2); // Y is up
+
+        if (draggingSprite) {
+            // Apply offset to maintain relative position
+            draggingSprite.x = mouse.x + dragOffsetX;
+            draggingSprite.y = mouse.y + dragOffsetY;
+            
+            // Only update property bar if it exists (Engine robustness)
+            if (currentSelection === draggingSprite.id && typeof updatePropBar === 'function') {
+                updatePropBar();
+            }
+        }
+    });
+    
+    canvas.addEventListener('mousedown', () => {
+        mouse.down = true;
+        
+        // 1. Drag Logic (Top-most sprite wins)
+        if (!document.fullscreenElement) {
+            for (let i = sprites.length - 1; i >= 0; i--) {
+                const s = sprites[i];
+                
+                // Use pixel-perfect check
+                if (isTouchingMouse(s)) {
+                    draggingSprite = s;
+                    // Calculate offset: Sprite Pos - Mouse Pos
+                    dragOffsetX = s.x - mouse.x;
+                    dragOffsetY = s.y - mouse.y;
+                    
+                    // Only select if UI exists
+                    if (currentSelection !== s.id && typeof selectSprite === 'function') {
+                        selectSprite(s.id);
+                    }
+                    break; // Stop after finding the top-most visible sprite
+                }
+            }
+        }
+
+        // 2. Event Logic (All matching sprites trigger)
+        if (isRunning) {
+            // Check ALL sprites + Stage
+            [stage, ...sprites].forEach(s => {
+                if (s.visible && s._listeners && s._listeners.onClick && s._listeners.onClick.length > 0) {
+                    let hit = false;
+                    
+                    if (s.isStage) {
+                        // Stage is always hit if we clicked the canvas
+                        hit = true;
+                    } else {
+                        // Sprite Hit Check (Pixel Perfect)
+                        if (isTouchingMouse(s)) hit = true;
+                    }
+
+                    if (hit) {
+                        // Auto-start engine if stopped, so the event script can run
+                        if (!window.isRunning) window.isRunning = true;
+                        
+                        // Iterate through all listeners registered for this event
+                        s._listeners.onClick.forEach(fn => fn());
+                    }
+                }
+            });
+        }
+    });
+
+    canvas.addEventListener('mouseup', () => { mouse.down = false; draggingSprite = null; });
+    canvas.addEventListener('mouseleave', () => { mouse.down = false; draggingSprite = null; });
+
+    // Helper to map browser key codes to Scratch-friendly names
+    const normalizeKey = (key) => {
+        if (key === " ") return "space";
+        if (key === "ArrowUp") return "up";
+        if (key === "ArrowDown") return "down";
+        if (key === "ArrowLeft") return "left";
+        if (key === "ArrowRight") return "right";
+        if (key === "Enter") return "enter";
+        return key.toLowerCase();
+    };
+
+    window.addEventListener('keydown', e => {
+        // Prevent game input while typing in editor or inputs
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+        const key = normalizeKey(e.key);
+        
+        // Stop if key is already held down (prevents machine-gun repeating)
+        if (pressedKeys[key]) return;
+
+        pressedKeys[key] = true;
+        
+        // iterate all sprites/stage to trigger on_keypress
+        [stage, ...sprites].forEach(s => { 
+             if (s._listeners && s._listeners.onKey && s._listeners.onKey.length > 0) {
+                 // Auto-start engine if stopped, so the event script can run
+                 if (!window.isRunning) window.isRunning = true;
+                 
+                 s._listeners.onKey.forEach(fn => fn(key));
+             }
+        });
+    });
+    
+    window.addEventListener('keyup', e => {
+        const key = normalizeKey(e.key);
+        pressedKeys[key] = false;
+    });
+}
+
+function setupInputs() {
+    const editor = document.getElementById('code-editor');
+    const autocompleteList = document.getElementById('autocomplete-list');
+    const caretMeasure = document.getElementById('caret-measure');
+    
+    let activeSuggestionIndex = 0;
+    let filteredKeywords = [];
+
+    const hideAutocomplete = () => {
+        autocompleteList.style.display = 'none';
+        activeSuggestionIndex = 0;
+    };
+
+    const getCaretCoordinates = () => {
+        // Copy styles to hidden div
+        const styles = window.getComputedStyle(editor);
+        caretMeasure.style.font = styles.font;
+        caretMeasure.style.fontFamily = styles.fontFamily;
+        caretMeasure.style.fontSize = styles.fontSize;
+        caretMeasure.style.lineHeight = styles.lineHeight;
+        caretMeasure.style.padding = styles.padding;
+        caretMeasure.style.letterSpacing = styles.letterSpacing;
+        caretMeasure.style.width = styles.width;
+
+        // Get text up to cursor
+        const text = editor.value.substring(0, editor.selectionStart);
+        // Replace spaces with non-breaking spaces for measurement
+        const htmlText = text.replace(/\n/g, '<br>').replace(/ /g, '&nbsp;');
+        // Add a marker span
+        caretMeasure.innerHTML = htmlText + '<span id="caret-marker">|</span>';
+        
+        const marker = document.getElementById('caret-marker');
+        return { top: marker.offsetTop, left: marker.offsetLeft };
+    };
+
+    const renderAutocomplete = (filter) => {
+        filteredKeywords = API_KEYWORDS.filter(k => k.word.toLowerCase().startsWith(filter.toLowerCase()));
+        
+        if (filteredKeywords.length === 0) {
+            hideAutocomplete();
+            return;
+        }
+
+        autocompleteList.innerHTML = '';
+        filteredKeywords.forEach((k, idx) => {
+            const div = document.createElement('div');
+            div.className = `suggestion-item ${idx === activeSuggestionIndex ? 'active' : ''}`;
+            // Show Signature in UI
+            div.innerHTML = `<span class="suggestion-sig">${k.signature}</span><span class="badge badge-${k.type}">${k.type.toUpperCase()}</span>`;
+            
+            div.onmousedown = (e) => {
+                e.preventDefault(); // Prevent focus loss
+                insertSuggestion(k);
+            };
+            autocompleteList.appendChild(div);
+        });
+
+        positionPopup();
+    };
+
+    const renderSignatureHelp = (funcName, argIndex) => {
+        const sigs = FUNCTION_SIGNATURES[funcName];
+        if (!sigs) {
+            hideAutocomplete();
+            return;
+        }
+
+        // Filter signatures that have enough arguments
+        const relevantSigs = sigs.filter(s => s.args.length > argIndex);
+
+        if (relevantSigs.length === 0) {
+            hideAutocomplete();
+            return;
+        }
+
+        // Clear suggestions so Enter/Arrows don't hijack the cursor during parameter help
+        filteredKeywords = []; 
+        activeSuggestionIndex = -1;
+
+        autocompleteList.innerHTML = '';
+        relevantSigs.forEach((s) => {
+            const div = document.createElement('div');
+            div.className = `suggestion-item`;
+            div.style.cursor = "default";
+            
+            // Construct highlighting HTML
+            const argHtml = s.args.map((arg, i) => {
+                return i === argIndex ? `<span class="font-bold text-indigo-600 bg-indigo-50 px-1 rounded">${arg}</span>` : `<span class="text-gray-500">${arg}</span>`;
+            }).join(', ');
+
+            div.innerHTML = `<span class="suggestion-sig font-mono text-xs">${funcName}(${argHtml})</span>`;
+            autocompleteList.appendChild(div);
+        });
+
+        positionPopup();
+    };
+
+    const positionPopup = () => {
+        const coords = getCaretCoordinates();
+        const editorRect = editor.getBoundingClientRect();
+        const lineHeight = parseInt(window.getComputedStyle(editor).lineHeight) || 20;
+        
+        const top = editorRect.top + coords.top - editor.scrollTop + lineHeight;
+        const left = editorRect.left + coords.left - editor.scrollLeft;
+        
+        autocompleteList.style.top = top + 'px';
+        autocompleteList.style.left = left + 'px';
+        autocompleteList.style.display = 'block';
+    };
+
+    const insertSuggestion = (item) => {
+        const snippet = item.insert;
+        const offset = item.offset;
+        
+        const value = editor.value;
+        const end = editor.selectionEnd;
+        
+        // Find the start of the current word being typed
+        let start = end - 1;
+        while (start >= 0 && /[a-zA-Z0-9_.]/.test(value[start])) {
+            start--;
+        }
+        start++; // Move back to the first char of the word
+
+        // Replace partial word with snippet
+        const prefix = value.substring(0, start);
+        const suffix = value.substring(end);
+        
+        // Insert with undo history support
+        editor.setSelectionRange(start, end);
+        document.execCommand('insertText', false, snippet);
+        
+        // Move cursor back if needed (to be inside parens)
+        if (offset > 0) {
+            const newPos = start + snippet.length - offset;
+            editor.setSelectionRange(newPos, newPos);
+        }
+        
+        hideAutocomplete();
+        // Trigger input event to check for signature help immediately after insertion
+        editor.dispatchEvent(new Event('input'));
+    };
+
+    // Centralized Autocomplete Logic
+    const updateAutocomplete = () => {
+        const value = editor.value;
+        const cursor = editor.selectionEnd;
+
+        // 1. Check for Signature Help Context (Inside Parens)
+        let parenDepth = 0;
+        let scanPos = cursor - 1;
+        let argIndex = 0;
+        let foundFunc = false;
+
+        // Scan backwards to find the opening parenthesis of the *current* function call
+        while (scanPos >= 0) {
+            const char = value[scanPos];
+            if (char === ')') {
+                parenDepth++;
+            } else if (char === '(') {
+                if (parenDepth > 0) {
+                    parenDepth--;
+                } else {
+                    // Found the opening bracket!
+                    foundFunc = true;
+                    break;
+                }
+            } else if (char === ',' && parenDepth === 0) {
+                argIndex++;
+            }
+            scanPos--;
+        }
+
+        if (foundFunc) {
+            // Extract function name before the found '('
+            let nameEnd = scanPos;
+            let nameStart = nameEnd - 1;
+            // Eat whitespace
+            while (nameStart >= 0 && /\s/.test(value[nameStart])) nameStart--;
+            nameEnd = nameStart + 1; // End of actual name
+            // Find start of name
+            while (nameStart >= 0 && /[a-zA-Z0-9_.]/.test(value[nameStart])) {
+                nameStart--;
+            }
+            nameStart++;
+            
+            const funcName = value.substring(nameStart, nameEnd);
+            
+            if (FUNCTION_SIGNATURES[funcName]) {
+                renderSignatureHelp(funcName, argIndex);
+                return;
+            }
+        }
+
+        // 2. Fallback to Autocomplete (Word completion)
+        // Get word before cursor
+        let start = cursor - 1;
+        while (start >= 0 && /[a-zA-Z0-9_.]/.test(value[start])) {
+            start--;
+        }
+        const currentWord = value.substring(start + 1, cursor);
+
+        if (currentWord.length > 0) {
+            renderAutocomplete(currentWord);
+        } else {
+            hideAutocomplete();
+        }
+    };
+
+    // Event Bindings
+    editor.addEventListener('input', (e) => {
+        const s = getSelectedSprite();
+        if (s && s.threads[activeThreadIndex]) {
+            s.threads[activeThreadIndex].code = e.target.value;
+        }
+        updateAutocomplete();
+    });
+    
+    // Check context on click or cursor movement
+    editor.addEventListener('click', updateAutocomplete);
+    editor.addEventListener('keyup', (e) => {
+        // Ignore keyups that are part of typing (handled by input) or navigation logic
+        if (["ArrowUp", "ArrowDown", "Enter", "Tab", "Escape"].includes(e.key)) return;
+        updateAutocomplete();
+    });
+
+    // Tab & Enter & Navigation Key Support for Code Editor
+    editor.addEventListener('keydown', (e) => {
+        
+        // Autocomplete Navigation (Only if list is visible AND we have suggestions)
+        if (autocompleteList.style.display === 'block' && filteredKeywords.length > 0) {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                activeSuggestionIndex = (activeSuggestionIndex + 1) % filteredKeywords.length;
+                // Update UI highlight
+                Array.from(autocompleteList.children).forEach((child, i) => {
+                    child.classList.toggle('active', i === activeSuggestionIndex);
+                    if (i === activeSuggestionIndex) child.scrollIntoView({block: "nearest"});
+                });
+                return;
+            }
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                activeSuggestionIndex = (activeSuggestionIndex - 1 + filteredKeywords.length) % filteredKeywords.length;
+                Array.from(autocompleteList.children).forEach((child, i) => {
+                    child.classList.toggle('active', i === activeSuggestionIndex);
+                    if (i === activeSuggestionIndex) child.scrollIntoView({block: "nearest"});
+                });
+                return;
+            }
+            if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                insertSuggestion(filteredKeywords[activeSuggestionIndex]);
+                return;
+            }
+            if (e.key === 'Escape') {
+                hideAutocomplete();
+                return;
+            }
+        }
+
+        // Tab Logic (Indent/Unindent)
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            const start = editor.selectionStart;
+            const end = editor.selectionEnd;
+            const value = editor.value;
+
+            // 1. Simple Tab Insert (No selection, No Shift)
+            if (!e.shiftKey && start === end) {
+                // Use execCommand to preserve Undo history (CTRL+Z)
+                document.execCommand('insertText', false, "\t");
+                return;
+            }
+
+            // 2. Block Operation (Shift+Tab OR Tab with selection)
+            // Find start of the first line
+            let lineStart = value.lastIndexOf('\n', start - 1) + 1;
+            
+            // Find end of the last line
+            let lineEnd = value.indexOf('\n', end);
+            
+            // Adjustment: If selection ends exactly at the beginning of a new line,
+            // exclude that new line from the operation.
+            if (end > start && value.charAt(end - 1) === '\n') {
+                lineEnd = end - 1;
+            }
+            if (lineEnd === -1) lineEnd = value.length;
+
+            // Extract the block of text
+            const lines = value.substring(lineStart, lineEnd).split('\n');
+            let newBlock = "";
+
+            if (e.shiftKey) {
+                // Shift+Tab: Unindent (Remove \t or up to 4 spaces)
+                const newLines = lines.map(line => {
+                    return line.replace(/^(\t| {1,4})/, '');
+                });
+                newBlock = newLines.join('\n');
+            } else {
+                // Tab with selection: Indent
+                const newLines = lines.map(line => '\t' + line);
+                newBlock = newLines.join('\n');
+            }
+
+            // Apply changes via execCommand to preserve Undo history
+            editor.setSelectionRange(lineStart, lineEnd);
+            document.execCommand('insertText', false, newBlock);
+            
+            // Select the modified block
+            editor.setSelectionRange(lineStart, lineStart + newBlock.length);
+        }
+
+        // Enter Key Logic (Auto-Indent)
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const start = editor.selectionStart;
+            const value = editor.value;
+            
+            // Get text from start of current line up to the cursor
+            const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+            const currentLine = value.substring(lineStart, start);
+            
+            // Capture existing indentation (whitespace at start of line)
+            const indentMatch = currentLine.match(/^(\s*)/);
+            let indent = indentMatch ? indentMatch[0] : "";
+            
+            // Add extra indent if line ends with colon (ignoring trailing whitespace)
+            if (currentLine.trimEnd().endsWith(':')) {
+                indent += "\t"; 
+            }
+            
+            // Insert Newline + Indentation using execCommand for Undo history
+            document.execCommand('insertText', false, "\n" + indent);
+        }
+    });
+
+    const angleCircle = document.getElementById('angle-picker');
+    angleCircle.addEventListener('mousedown', (e) => {
+        const updateAngle = (ev) => {
+            const rect = angleCircle.getBoundingClientRect();
+            const cx = rect.left + rect.width/2;
+            const cy = rect.top + rect.height/2;
+            let angle = Math.atan2(ev.clientY - cy, ev.clientX - cx) * (180/Math.PI) + 90;
+            if (angle < 0) angle += 360;
+            angle = Math.round(angle / 5) * 5; 
+            
+            const s = getSelectedSprite();
+            if (s && !s.isStage) {
+                s.direction = angle;
+                updatePropBar();
+            }
+        };
+        const up = () => { window.removeEventListener('mousemove', updateAngle); window.removeEventListener('mouseup', up); };
+        window.addEventListener('mousemove', updateAngle);
+        window.addEventListener('mouseup', up);
+        updateAngle(e);
+    });
+}
+
+function renderLoop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (stage) drawSprite(stage, ctx, true);
+    sprites.forEach(s => { if (s.visible) drawSprite(s, ctx); });
+    requestAnimationFrame(renderLoop);
+}
+
+function drawSprite(s, targetCtx, isStage = false) {
+    // If no specific context provided, use the main display context
+    if (!targetCtx) targetCtx = ctx;
+
+    const costume = s.currentCostume;
+    if (!costume) return;
+    
+    const img = s.imgCache[costume.url];
+    if (!img) {
+        s.loadImage(costume.url); 
+        return;
+    }
+
+    targetCtx.save();
+    targetCtx.translate(STAGE_WIDTH/2 + s.x, STAGE_HEIGHT/2 - s.y);
+    
+    if (!isStage) {
+        let rotationRad = (s.direction - 90) * Math.PI / 180;
+        let scaleX = s.size / 100;
+        let scaleY = s.size / 100;
+
+        if (s.rotationStyle === 'none') {
+            rotationRad = 0;
+        } else if (s.rotationStyle === 'left-right') {
+            rotationRad = 0;
+            // Check Scratch Direction (90 Right, -90 Left)
+            // Simplified: If direction is between 180 and 360 (or negative) pointing left
+            let d = s.direction % 360;
+            if (d < 0) d += 360;
+            if (d > 180) { // Pointing Left
+                scaleX = -scaleX;
+            }
+        }
+        
+        targetCtx.rotate(rotationRad);
+        targetCtx.scale(scaleX, scaleY);
+    } else {
+        targetCtx.scale(STAGE_WIDTH / img.width, STAGE_HEIGHT / img.height);
+    }
+
+    const w = img.width; const h = img.height;
+    
+    if (!isStage) targetCtx.drawImage(img, -w/2, -h/2);
+    else targetCtx.drawImage(img, -img.width/2, -img.height/2);
+
+    targetCtx.restore();
+
+    // Only draw speech bubble on the main canvas, not collision canvas
+    if (targetCtx === ctx && s.speechBubble && s.speechBubble.text) {
+        drawBubble(s.x, s.y, s.speechBubble.text);
+    }
+}
+
+function drawBubble(x, y, text) {
+    const cx = STAGE_WIDTH/2 + x + 20;
+    const cy = STAGE_HEIGHT/2 - y - 40;
+    
+    ctx.font = "12px sans-serif";
+    const width = ctx.measureText(text).width + 10;
+    const height = 24;
+    
+    ctx.fillStyle = "white";
+    ctx.strokeStyle = "black";
+    ctx.lineWidth = 1;
+    
+    ctx.beginPath();
+    ctx.roundRect(cx, cy, width, height, 5);
+    ctx.fill();
+    ctx.stroke();
+    
+    ctx.fillStyle = "black";
+    ctx.fillText(text, cx + 5, cy + 16);
+}
+
+function updateVarDisplay() {
+    const overlay = document.getElementById('variable-overlay');
+    overlay.innerHTML = '';
+    for (const [key, val] of Object.entries(displayedVariables)) {
+        const div = document.createElement('div');
+        div.className = 'var-box';
+        div.innerHTML = `<span class="var-name">${key}</span><span class="var-value">${val}</span>`;
+        overlay.appendChild(div);
+    }
+}
+
+// --- UI Logic ---
+
+function switchTab(tab) {
+    document.getElementById('tab-code').classList.toggle('hidden', tab !== 'code');
+    document.getElementById('tab-costumes').classList.toggle('hidden', tab !== 'costumes');
+    document.getElementById('tab-btn-code').classList.toggle('border-indigo-500', tab === 'code');
+    document.getElementById('tab-btn-costumes').classList.toggle('border-indigo-500', tab === 'costumes');
+}
+
+function renderSpriteList() {
+    const list = document.getElementById('sprite-list');
+    let addBtn = list.querySelector('#add-sprite-btn');
+    if (!addBtn) {
+        addBtn = document.createElement('div');
+        addBtn.id = 'add-sprite-btn';
+        addBtn.onclick = createNewSprite;
+        addBtn.className = "flex-shrink-0 w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 hover:border-indigo-400 transition";
+        addBtn.innerHTML = '<i class="fa-solid fa-plus text-gray-400 text-2xl"></i>';
+    } else {
+        addBtn.remove();
+    }
+
+    list.innerHTML = '';
+
+    const stageEl = document.createElement('div');
+    stageEl.className = `flex-shrink-0 w-20 h-20 bg-white border-2 rounded-lg cursor-pointer flex flex-col items-center justify-center ${currentSelection === 'stage' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200'}`;
+    stageEl.innerHTML = '<span class="text-xs font-bold mt-1">Stage</span>';
+    stageEl.onclick = () => selectSprite('stage');
+    list.appendChild(stageEl);
+
+    sprites.forEach(s => {
+        const el = document.createElement('div');
+        el.className = `flex-shrink-0 w-20 h-20 bg-white border-2 rounded-lg cursor-pointer flex flex-col items-center justify-center relative group ${currentSelection === s.id ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200'}`;
+        
+        el.innerHTML = `
+            <div class="w-10 h-10 bg-gray-100 rounded-full mb-1 overflow-hidden">
+                <img id="thumb-${s.id}" src="${s.currentCostume?.url}" class="w-full h-full object-contain">
+            </div>
+            <span class="text-xs truncate w-16 text-center">${s.name}</span>
+        `;
+        
+        const delBtn = document.createElement('button');
+        delBtn.className = "hidden group-hover:flex absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs items-center justify-center z-10 shadow-sm hover:bg-red-600 transition-colors";
+        delBtn.innerHTML = '<i class="fa-solid fa-times pointer-events-none"></i>';
+        delBtn.onclick = (e) => {
+            e.stopPropagation();
+            deleteSprite(s.id);
+        };
+
+        el.appendChild(delBtn);
+        el.onclick = () => selectSprite(s.id);
+        list.appendChild(el);
+    });
+    
+    list.appendChild(addBtn);
+}
+
+function selectSprite(id) {
+    currentSelection = id;
+    renderSpriteList();
+    
+    // Explicitly load the first thread of the new sprite
+    // This updates the editor content and calls renderThreads() to refresh the list
+    loadThreadToEditor(0);
+    
+    renderCostumes();
+    updatePropBar();
+    updateLibraryUI();
+}
+
+function getSelectedSprite() {
+    if (currentSelection === 'stage') return stage;
+    return sprites.find(s => s.id === currentSelection);
+}
+
+function createNewSprite() {
+    const newS = new Sprite("Sprite" + (sprites.length + 1));
+    sprites.push(newS);
+    selectSprite(newS.id);
+}
+
+function deleteSprite(id) {
+    showCustomConfirm("Delete this sprite?", () => {
+        sprites = sprites.filter(s => s.id !== id);
+        if (currentSelection === id) {
+            selectSprite('stage');
+        } else {
+            renderSpriteList();
+        }
+    });
+}
+
+function updatePropBar() {
+    const s = getSelectedSprite();
+    if (!s) return;
+    
+    document.getElementById('prop-name').value = s.name;
+    document.getElementById('prop-x').value = Math.round(s.x);
+    document.getElementById('prop-y').value = Math.round(s.y);
+    document.getElementById('prop-size').value = s.size;
+    document.getElementById('prop-dir').value = Math.round(s.direction);
+    document.getElementById('prop-rot-style').value = s.rotationStyle;
+    
+    const line = document.getElementById('angle-picker-line');
+    line.style.transform = `rotate(${s.direction - 90}deg)`;
+
+    const inputs = ['prop-x', 'prop-y', 'prop-size', 'prop-dir', 'prop-rot-style'];
+    inputs.forEach(id => document.getElementById(id).disabled = s.isStage);
+}
+
+function updateSpriteProp(prop, val) {
+    const s = getSelectedSprite();
+    if (!s || s.isStage) return;
+    
+    if (prop === 'name') s.name = val;
+    else if (prop === 'rotationStyle') s.rotationStyle = val;
+    else s[prop] = parseFloat(val);
+    
+    if (prop === 'name') renderSpriteList();
+}
+
+// --- Thread UI ---
+
+function renderThreads() {
+    const s = getSelectedSprite();
+    const list = document.getElementById('thread-list');
+    list.innerHTML = '';
+    
+    s.threads.forEach((t, idx) => {
+        const div = document.createElement('div');
+        div.className = "p-2 bg-white border border-gray-300 rounded shadow-sm cursor-pointer hover:bg-indigo-50 flex justify-between group text-sm items-center";
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.innerText = t.name;
+        div.appendChild(nameSpan);
+
+        const controls = document.createElement('div');
+        controls.className = "hidden group-hover:flex gap-2";
+
+        const renameBtn = document.createElement('i');
+        renameBtn.className = "fa-solid fa-pen text-gray-400 hover:text-blue-500 p-1";
+        renameBtn.onclick = (e) => {
+            e.stopPropagation();
+            renameThread(idx);
+        };
+        controls.appendChild(renameBtn);
+
+        const deleteBtn = document.createElement('i');
+        deleteBtn.className = "fa-solid fa-trash text-gray-400 hover:text-red-500 p-1";
+        deleteBtn.onclick = (e) => {
+            e.stopPropagation();
+            deleteThread(idx);
+        };
+        controls.appendChild(deleteBtn);
+
+        div.appendChild(controls);
+        div.onclick = () => loadThreadToEditor(idx);
+        
+        list.appendChild(div);
+    });
+    
+    if (s.threads.length > 0) {
+        if (activeThreadIndex >= s.threads.length) activeThreadIndex = 0;
+        // Don't auto-load editor content here to prevent overwrite cycles, just highlight
+        const list = document.getElementById('thread-list');
+        if (list.children[activeThreadIndex]) {
+             list.children[activeThreadIndex].classList.add('border-indigo-500', 'ring-1');
+        }
+    }
+}
+
+let activeThreadIndex = 0;
+function loadThreadToEditor(idx) {
+    const s = getSelectedSprite();
+    activeThreadIndex = idx;
+    const editor = document.getElementById('code-editor');
+    if (s && s.threads[idx]) {
+        editor.value = s.threads[idx].code;
+    } else {
+        editor.value = "";
+    }
+    renderThreads(); // Update highlighting
+}
+
+function addThread() {
+    const s = getSelectedSprite();
+    s.threads.push({ id: 't'+Date.now(), name: 'Thread ' + (s.threads.length+1), code: "def game_start():\n    pass" });
+    renderThreads();
+    loadThreadToEditor(s.threads.length - 1);
+}
+
+function deleteThread(idx) {
+    const s = getSelectedSprite();
+    if (s.threads.length <= 1) return showAlert("Cannot delete the last thread.");
+    
+    showCustomConfirm("Delete this thread?", () => {
+        s.threads.splice(idx, 1);
+        activeThreadIndex = 0;
+        renderThreads();
+        loadThreadToEditor(0);
+    });
+}
+
+function renameThread(idx) {
+    const s = getSelectedSprite();
+    showCustomPrompt("Rename Thread:", s.threads[idx].name, (newName) => {
+        s.threads[idx].name = newName;
+        renderThreads();
+    });
+}
+
+// --- Costume UI ---
+
+let draggedCostumeIdx = null;
+// Track what the library modal should do when an item is clicked
+let libraryCallback = null; 
+
+function renderCostumes() {
+    const s = getSelectedSprite();
+    const list = document.getElementById('costume-list');
+    list.innerHTML = '';
+    
+    s.costumes.forEach((c, i) => {
+        const div = document.createElement('div');
+        const isSelected = s.currentCostumeIdx === i;
+        const selectedClass = isSelected ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-gray-200';
+        
+        div.className = `flex flex-col items-center border p-2 rounded relative group hover:shadow-md bg-gray-50 cursor-pointer transition-all ${selectedClass}`;
+        div.draggable = true;
+
+        div.innerHTML = `
+            <img src="${c.url}" class="w-20 h-20 object-contain bg-white border border-gray-200 mb-2 pointer-events-none">
+            <span class="text-xs text-gray-600 truncate w-full text-center pointer-events-none">${c.name}</span>
+            
+            <!-- Swap Button -->
+            <button onclick="swapCostume(${i}, event)" class="absolute top-1 left-1 text-indigo-500 opacity-0 group-hover:opacity-100 hover:text-indigo-700 bg-white rounded-full w-6 h-6 flex items-center justify-center shadow-sm border border-gray-200" title="Swap Costume">
+                <i class="fa-solid fa-folder-open text-xs"></i>
+            </button>
+
+            <!-- Delete Button -->
+            <button onclick="removeCostume(${i}, event)" class="absolute top-1 right-1 text-red-500 opacity-0 group-hover:opacity-100 hover:text-red-700 bg-white rounded-full w-6 h-6 flex items-center justify-center shadow-sm border border-gray-200" title="Delete">
+                <i class="fa-solid fa-trash text-xs"></i>
+            </button>
+        `;
+        
+        div.onclick = () => {
+            s.currentCostumeIdx = i;
+            renderCostumes();
+            updateSpriteThumbnail(s);
+        };
+
+        div.ondragstart = (e) => {
+            draggedCostumeIdx = i;
+            e.dataTransfer.effectAllowed = 'move';
+            div.classList.add('opacity-50');
+        };
+        div.ondragend = () => {
+            div.classList.remove('opacity-50');
+            draggedCostumeIdx = null;
+        };
+        div.ondragover = (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+        };
+        div.ondrop = (e) => {
+            e.preventDefault();
+            if (draggedCostumeIdx === null || draggedCostumeIdx === i) return;
+            const currentlySelected = s.costumes[s.currentCostumeIdx];
+            const item = s.costumes.splice(draggedCostumeIdx, 1)[0];
+            s.costumes.splice(i, 0, item);
+            s.currentCostumeIdx = s.costumes.indexOf(currentlySelected);
+            renderCostumes();
+            updateSpriteThumbnail(s);
+        };
+
+        list.appendChild(div);
+    });
+}
+
+// Logic to open library in "Add" mode
+function openLibraryForAdd() {
+    document.getElementById('library-title').innerText = "Add from Library";
+    libraryCallback = (url) => {
+        const s = getSelectedSprite();
+        s.costumes.push({ name: "Costume " + (s.costumes.length + 1), url: url });
+        renderCostumes();
+    };
+    document.getElementById('library-modal').classList.remove('hidden');
+}
+
+// Logic to open library in "Swap" mode
+function swapCostume(idx, e) {
+    if (e) e.stopPropagation();
+    document.getElementById('library-title').innerText = "Swap Costume";
+    libraryCallback = (url) => {
+        const s = getSelectedSprite();
+        // Update URL
+        s.costumes[idx].url = url;
+        // Reset cache for this url to force redraw if needed, or simple update
+        // We don't change the name automatically to preserve user naming, 
+        // unless you want to. For now, keep user name.
+        renderCostumes();
+        updateSpriteThumbnail(s);
+    };
+    document.getElementById('library-modal').classList.remove('hidden');
+}
+
+function updateLibraryUI() {
+    const menu = document.getElementById('costume-library-menu'); // Note: This ID reference might be stale if we are using the modal now, but the function populates #library-grid
+    // The previous implementation of updateLibraryUI in the provided context was populating #library-grid.
+    // Let's ensure we target the correct element for the MODAL.
+    
+    const grid = document.getElementById('library-grid');
+    if (!grid) return; // Safety check
+    
+    grid.innerHTML = '';
+    const s = getSelectedSprite();
+    const urls = s && s.isStage ? window.stageLibUrls : window.spriteLibUrls;
+    
+    if (!urls) {
+        grid.innerHTML = '<div class="col-span-4 text-center text-gray-500">Loading library...</div>';
+        return;
+    }
+
+    urls.forEach((url, i) => {
+        const item = document.createElement('div');
+        // Updated Class: Removed 'aspect-square', added 'h-32' for fixed height stability
+        item.className = "h-32 border border-gray-200 rounded-lg hover:border-indigo-500 hover:shadow-md cursor-pointer flex items-center justify-center bg-white p-2 relative group/item overflow-hidden transition-all";
+        
+        const img = document.createElement('img');
+        img.src = url;
+        img.className = "w-full h-full object-contain";
+        img.loading = "lazy";
+        
+        item.appendChild(img);
+        item.title = `Asset ${i+1}`;
+        
+        item.onclick = () => {
+            if (libraryCallback) libraryCallback(url);
+            document.getElementById('library-modal').classList.add('hidden');
+        };
+        grid.appendChild(item);
+    });
+}
+
+function removeCostume(idx, e) {
+    if (e) e.stopPropagation();
+    const s = getSelectedSprite();
+    if (s.costumes.length <= 1) return showAlert("Must have at least one costume");
+    showCustomConfirm("Delete this costume?", () => {
+        s.costumes.splice(idx, 1);
+        if (s.currentCostumeIdx >= s.costumes.length) s.currentCostumeIdx = Math.max(0, s.costumes.length - 1);
+        renderCostumes();
+        updateSpriteThumbnail(s);
+    });
+}
+
+function updateSpriteThumbnail(s) {
+    const img = document.getElementById(`thumb-${s.id}`);
+    if (img && s.currentCostume) {
+        img.src = s.currentCostume.url;
+    }
+}
+
+// --- Modals ---
+
+function showCustomPrompt(msg, defaultVal, onOk) {
+    const modal = document.getElementById('prompt-modal');
+    const txt = document.getElementById('prompt-msg');
+    const input = document.getElementById('prompt-input');
+    const ok = document.getElementById('prompt-ok');
+    const cancel = document.getElementById('prompt-cancel');
+    txt.innerText = msg;
+    input.value = defaultVal;
+    modal.classList.remove('hidden');
+    input.focus();
+    input.select();
+    const close = () => { modal.classList.add('hidden'); ok.onclick = null; cancel.onclick = null; input.onkeydown = null; };
+    ok.onclick = () => { if (input.value.trim().length > 0) onOk(input.value); close(); };
+    cancel.onclick = close;
+    input.onkeydown = (e) => { if (e.key === 'Enter') { if (input.value.trim().length > 0) onOk(input.value); close(); } };
+}
+
+function showCustomConfirm(msg, onYes) {
+    const modal = document.getElementById('confirm-modal');
+    const txt = document.getElementById('confirm-msg');
+    const yes = document.getElementById('confirm-yes');
+    const no = document.getElementById('confirm-no');
+    txt.innerText = msg;
+    modal.classList.remove('hidden');
+    const close = () => { modal.classList.add('hidden'); yes.onclick = null; no.onclick = null; };
+    yes.onclick = () => { onYes(); close(); };
+    no.onclick = close;
+}
+
+function showAlert(msg) {
+    const modal = document.getElementById('alert-modal');
+    const txt = document.getElementById('alert-msg');
+    txt.innerText = msg;
+    modal.classList.remove('hidden');
+}
+
+function showHelp() {
+    // Only update alert if we aren't using the modal (fallback).
+    // The modal HTML is already updated above.
+    const modal = document.getElementById('help-modal');
+    modal.classList.remove('hidden');
+}
+
+function saveProject() {
+    const data = { sprites: sprites.map(s => ({...s, imgCache: {}})), stage: {...stage, imgCache: {}} };
+    const blob = new Blob([JSON.stringify(data)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'savegame.ps2';
+    a.click();
+}
+
+function loadProject(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const data = JSON.parse(e.target.result);
+        stage = Object.assign(new Sprite("Stage", true), data.stage);
+        sprites = data.sprites.map(sData => Object.assign(new Sprite(sData.name), sData));
+        selectSprite(sprites[0]?.id || 'stage');
+        renderSpriteList();
+    };
+    reader.readAsText(file);
+}
+
+function publishProject() {
+    // 1. Serialize Data
+    const exportData = {
+        sprites: sprites.map(s => ({...s, imgCache: {}})), 
+        stage: {...stage, imgCache: {}}
+    };
+
+    // 2. Get Engine Code (Current script content)
+    const scripts = document.getElementsByTagName('script');
+    const engineScript = scripts[scripts.length - 1].textContent;
+
+    // 3. Construct Standalone HTML
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PyScratch Game</title>
+    <script src="https://cdn.tailwindcss.com"><\/script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"><\/script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background-color: #111; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; font-family: sans-serif; }
+        #game-container { position: relative; width: 480px; height: 360px; background: black; border: 4px solid #333; box-shadow: 0 0 20px rgba(0,0,0,0.5); overflow: hidden; }
+        #variable-overlay { pointer-events: none; position: absolute; inset: 0; padding: 8px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+        .var-box { pointer-events: auto; background: rgba(255, 140, 0, 0.9); color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; margin-bottom: 4px; border: 1px solid rgba(0,0,0,0.2); box-shadow: 2px 2px 0px rgba(0,0,0,0.1); }
+        .var-name { margin-right: 5px; opacity: 0.9; }
+        .var-value { background: rgba(0,0,0,0.2); padding: 0 4px; border-radius: 2px; }
+        #ask-overlay { position: absolute; bottom: 10px; left: 10px; right: 10px; background: white; padding: 10px; border-radius: 8px; display: flex; flex-direction: column; gap: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .hidden { display: none !important; }
+        #start-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 50; cursor: pointer; }
+        #start-overlay:hover { background: rgba(0,0,0,0.4); }
+        #controls { position: absolute; top: 10px; right: 10px; z-index: 60; display: flex; gap: 10px; }
+        .icon-btn { color: white; background: rgba(0,0,0,0.3); border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
+        .icon-btn:hover { background: rgba(0,0,0,0.6); }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="game-canvas" width="480" height="360" class="w-full h-full block object-contain"></canvas>
+        <div id="variable-overlay"></div>
+        
+        <div id="ask-overlay" class="hidden">
+            <span id="ask-prompt" class="text-sm font-bold text-indigo-600"></span>
+            <div class="flex w-full" style="display:flex">
+                <input type="text" id="ask-input" class="flex-1 border border-gray-300 rounded-l px-2 py-1 focus:outline-none" style="flex:1">
+                <button id="ask-submit" class="bg-indigo-600 text-white px-4 rounded-r">OK</button>
+            </div>
+        </div>
+
+        <div id="controls">
+            <button onclick="startAll()" class="icon-btn" title="Restart"><i class="fa-solid fa-flag text-green-400"></i></button>
+            <button onclick="stopAll()" class="icon-btn" title="Stop"><i class="fa-solid fa-stop-circle text-red-400"></i></button>
+            <button onclick="toggleFullscreen()" class="icon-btn" title="Fullscreen"><i class="fa-solid fa-expand"></i></button>
+        </div>
+
+        <div id="start-overlay" onclick="startAll()">
+            <i class="fa-solid fa-play text-white text-6xl opacity-80 shadow-lg"></i>
+        </div>
+    </div>
+
+    <!-- Hidden elements to satisfy engine references -->
+    <div id="code-editor" style="display:none"></div>
+    <div id="sprite-list" style="display:none"></div>
+    <div id="angle-picker" style="display:none"></div>
+
+    <script>
+        const __exportData = ${JSON.stringify(exportData)};
+        
+        // --- Engine Code ---
+        ${engineScript}
+
+        // --- Overrides for Standalone Mode ---
+        function renderSpriteList() {}
+        function renderThreads() {}
+        function renderCostumes() {}
+        function updatePropBar() {}
+        function updateLibraryUI() {} // No library in standalone
+        function setupInputs() {} 
+        function selectSprite() {}
+        function loadThreadToEditor() {}
+
+        // Boot Sequence
+        window.onload = async () => {
+            // Restore Data
+            stage = Object.assign(new Sprite("Stage", true), __exportData.stage);
+            sprites = __exportData.sprites.map(sData => Object.assign(new Sprite(sData.name), sData));
+            
+            initCanvas(); 
+            renderLoop(); 
+        };
+
+        // Modify startAll to handle overlay
+        const originalStartAll = startAll;
+        startAll = function() {
+            const overlay = document.getElementById('start-overlay');
+            if (overlay) overlay.style.display = 'none'; // Permanently hide overlay
+            originalStartAll();
+        }
+        // Removed stopAll override so overlay never returns
+
+    <\/script>
+</body>
+</html>`;
+
+    const blob = new Blob([html], {type: 'text/html'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'pyscratch-game.html';
+    a.click();
+}
+
+function stopAll() { window.isRunning = false; }
+
+function startAll() {
+    // 1. Stop everything first
+    stopAll();
+
+    // 2. Wait a moment to ensure loops exit (as loops check window.isRunning)
+    setTimeout(() => {
+        window._triggerStart = true;
+        window.isRunning = true;
+        
+        // Clear listeners before starting to avoid stale handlers and allow fresh merges
+        [stage, ...sprites].forEach(s => s._listeners = {});
+        
+        // Clear variable watchers
+        window.globalVarCache = {};
+        window.watchedVarNames.clear();
+        displayedVariables = {};
+        updateVarDisplay();
+
+        // Reset and Run threads
+        [stage, ...sprites].forEach(s => s.threads.forEach(t => {
+            // Force reset running state since we know we stopped effectively
+            t.running = false; 
+            runThread(s, t);
+        }));
+        
+        setTimeout(() => { window._triggerStart = false; }, 100); 
+    }, 100); // 100ms delay
+}
+
+function toggleFullscreen() {
+    const container = document.getElementById('game-container');
+    if (!document.fullscreenElement) container.requestFullscreen(); else document.exitFullscreen();
+}
+
+function toggleThreads() {
+    const sidebar = document.getElementById('thread-sidebar');
+    const showBtn = document.getElementById('show-threads-btn');
+    
+    if (sidebar.classList.contains('w-0')) {
+        // Expand
+        sidebar.classList.remove('w-0', 'border-none');
+        sidebar.classList.add('w-48', 'border-r');
+        showBtn.classList.add('hidden');
+    } else {
+        // Collapse
+        sidebar.classList.remove('w-48', 'border-r');
+        sidebar.classList.add('w-0', 'border-none');
+        showBtn.classList.remove('hidden');
+    }
+}
+
+window.sprites = sprites;
+window.stage = stage;
+</script>
+</body>
+</html>
